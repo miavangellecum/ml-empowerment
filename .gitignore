@@ -1,0 +1,10 @@
+venv/
+venv311/
+__pycache__/
+*.pyc
+.env
+receipts.db
+node_modules/
+output/
+*.png
+*.pdf
