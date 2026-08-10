@@ -8,3 +8,5 @@ node_modules/
 output/
 *.png
 *.pdf
+.idea/
+.gitignore
