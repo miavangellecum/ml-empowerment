@@ -1,7 +1,14 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from extraction.schema.schema import Receipt
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_aws import ChatBedrock
+from extraction.schema.schema import Receipt
+import os
 
-llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0)
+llm = ChatBedrock(
+    model_id=os.getenv("BEDROCK_MODEL_ID"),
+    region_name=os.getenv("AWS_REGION"),
+    model_kwargs={"temperature": 0},
+)
 structured_llm = llm.with_structured_output(Receipt)
 
 def parse_receipt(ocr_texts: list[str]) -> Receipt:

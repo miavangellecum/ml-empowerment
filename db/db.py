@@ -1,8 +1,11 @@
 # db.py
 import sqlite3
 
+DB_PATH = "db/receipts.db"
+
+
 def init_db():
-    conn = sqlite3.connect("receipts.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS receipts (
@@ -34,7 +37,7 @@ def init_db():
 
 
 def save_receipt(receipt: dict) -> int:
-    conn = sqlite3.connect("receipts.db")
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO receipts (store_name, date, payment_method, currency, subtotal, tax, total)

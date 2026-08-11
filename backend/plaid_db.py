@@ -1,6 +1,6 @@
 import sqlite3
 
-DB_PATH = "receipts.db"
+DB_PATH = "db/receipts.db"
 
 
 def init_plaid_db():
