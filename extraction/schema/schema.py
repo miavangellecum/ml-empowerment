@@ -1,4 +1,4 @@
-# this is an issue cause of all he dif stucuture TODO: decide schema + requirments for DB
+# this is an issue cause of all he dif structure TODO: decide schema + requirments for DB
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import date

@@ -2,9 +2,12 @@
   "name": "hackathon",
   "version": "1.0.0",
   "description": "",
-  "main": "frontend/index.js",
+  "main": "frontend/js/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "multer": "^2.2.0"
+  }
 }

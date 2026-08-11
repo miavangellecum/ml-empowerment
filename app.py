@@ -2,13 +2,23 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import shutil, os
 
-from extraction.extraction import extract_text, parse_receipt  # your OCR + LLM functions
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from extraction.extraction import process_receipt
 from db.db import save_receipt, init_db
+from backend.plaid_db import init_plaid_db
+from backend.plaid_routes import router as plaid_router
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 init_db()
+init_plaid_db()
+
+app.include_router(plaid_router)
+
 
 @app.post("/extract")
 async def extract_receipt(file: UploadFile = File(...)):
@@ -16,8 +26,7 @@ async def extract_receipt(file: UploadFile = File(...)):
     with open(temp_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    ocr_text = extract_text(temp_path)
-    receipt = parse_receipt(ocr_text)  # returns Pydantic model
+    receipt = process_receipt(temp_path)  # returns Pydantic model
     receipt_dict = receipt.model_dump()
 
     receipt_id = save_receipt(receipt_dict)
