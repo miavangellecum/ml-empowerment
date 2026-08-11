@@ -21,5 +21,8 @@ Categorize each item into one of: groceries, dining, transport, household, deliv
 
 Now extract structured data from this OCR text:
 {ocr_text}
+
+If you cannot find a specific field's value in the text, do your best estimate from context (e.g. sum of line items), and only omit it if truly absent.
+Always include a numeric 'total' value — if there is no explicit total, sum the line items.
 """
     return structured_llm.invoke(prompt)
