@@ -1,0 +1,1 @@
+plaid-python>=29.0.0

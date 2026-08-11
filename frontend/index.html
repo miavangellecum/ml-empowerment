@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Receipt Extractor</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="card">
+    <h1>Receipt Extractor</h1>
+    <p class="subtitle">Upload a receipt (image or PDF) and extract structured data via OCR + LLM.</p>
+
+    <form id="upload-form">
+      <input type="file" id="file-input" accept="image/*,.pdf" required />
+      <button type="submit" id="submit-btn">Extract</button>
+    </form>
+
+    <div id="status"></div>
+
+    <pre id="result"></pre>
+
+    <hr />
+
+    <h2>Bank Transactions</h2>
+    <p class="subtitle">Connect a bank account via Plaid to pull in transactions.</p>
+
+    <button id="connect-bank-btn">Connect a bank</button>
+    <div id="plaid-status"></div>
+
+    <table id="transactions-table" class="hidden">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Name</th>
+          <th>Amount</th>
+          <th>Category</th>
+        </tr>
+      </thead>
+      <tbody id="transactions-body"></tbody>
+    </table>
+  </main>
+
+  <!-- Plaid Link SDK -->
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <script src="js/index.js"></script>
+</body>
+</html>
