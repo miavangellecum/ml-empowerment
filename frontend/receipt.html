@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spend — Receipt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="stage" style="max-width:520px;">
+  <a class="back-link" href="receipts.html">← Back to receipts</a>
+  <div id="detailRoot"></div>
+</div>
+
+<nav class="tabbar">
+  <a href="receipts.html">My Receipts</a>
+  <a href="scan.html" style="background:var(--red); color:#fff;">+ Scan</a>
+  <a href="index.html">Dashboard</a>
+</nav>
+
+<script src="js/data.js"></script>
+<script>
+(async function(){
+  const id = new URLSearchParams(location.search).get('id');
+  const root = document.getElementById('detailRoot');
+  const receipt = id ? await fetchReceiptById(id) : null;
+
+  if (!receipt) {
+    root.innerHTML = `<p>Couldn't find that receipt.</p>`;
+    return;
+  }
+
+  const meta = CATEGORY_META[receipt.category] || CATEGORY_META.other;
+
+  const itemsHtml = (receipt.items || []).map(it => `
+    <div class="line-item">
+      <div>
+        <span class="name">${it.name}</span>
+        ${it.quantity && it.quantity !== 1 ? `<span class="qty">×${it.quantity}</span>` : ''}
+      </div>
+      <div class="price">€${Number(it.total_price ?? it.unit_price ?? 0).toFixed(2)}</div>
+    </div>
+  `).join('');
+
+  root.innerHTML = `
+    <div class="detail-hero" style="background:${meta.color};">
+      <div class="store">${receipt.store_name}</div>
+      <div class="date">${receipt.date || ''}${receipt.payment_method ? ' · ' + receipt.payment_method : ''}</div>
+      <div class="total">−€${receipt.total.toFixed(2)}</div>
+    </div>
+    <div class="card">
+      ${itemsHtml || '<p style="color:rgba(35,31,26,0.5); font-size:13px;">No line items available.</p>'}
+      ${receipt.subtotal != null ? `<div class="summary-row"><span>Subtotal</span><span>€${receipt.subtotal.toFixed(2)}</span></div>` : ''}
+      ${receipt.tax != null ? `<div class="summary-row"><span>Tax</span><span>€${receipt.tax.toFixed(2)}</span></div>` : ''}
+      <div class="summary-row total"><span>Total</span><span>€${receipt.total.toFixed(2)}</span></div>
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>
