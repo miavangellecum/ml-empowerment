@@ -17,6 +17,23 @@ def init_plaid_db():
         )
     """)
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS plaid_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id TEXT UNIQUE,
+            item_id TEXT,
+            name TEXT,
+            official_name TEXT,
+            mask TEXT,
+            type TEXT,
+            subtype TEXT,
+            current_balance REAL,
+            available_balance REAL,
+            iso_currency_code TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (item_id) REFERENCES plaid_items (item_id)
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS plaid_transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             transaction_id TEXT UNIQUE,
@@ -116,6 +133,68 @@ def remove_transactions(transaction_ids: list[str]):
     cur = conn.cursor()
     cur.executemany("DELETE FROM plaid_transactions WHERE transaction_id = ?",
                      [(tid,) for tid in transaction_ids])
+    conn.commit()
+    conn.close()
+
+
+def upsert_accounts(item_id: str, accounts: list[dict]):
+    """Stores/refreshes the latest balance snapshot for every account on an item."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    for a in accounts:
+        balances = a.get("balances") or {}
+        cur.execute("""
+            INSERT INTO plaid_accounts
+                (account_id, item_id, name, official_name, mask, type, subtype,
+                 current_balance, available_balance, iso_currency_code, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(account_id) DO UPDATE SET
+                name=excluded.name,
+                official_name=excluded.official_name,
+                mask=excluded.mask,
+                type=excluded.type,
+                subtype=excluded.subtype,
+                current_balance=excluded.current_balance,
+                available_balance=excluded.available_balance,
+                iso_currency_code=excluded.iso_currency_code,
+                updated_at=CURRENT_TIMESTAMP
+        """, (
+            a.get("account_id"), item_id, a.get("name"), a.get("official_name"),
+            a.get("mask"), a.get("type"), a.get("subtype"),
+            balances.get("current"), balances.get("available"),
+            balances.get("iso_currency_code"),
+        ))
+    conn.commit()
+    conn.close()
+
+
+def get_accounts(item_id: str | None = None):
+    """Accounts joined with their parent bank's institution_name, for display."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    if item_id:
+        rows = cur.execute("""
+            SELECT pa.*, pi.institution_name FROM plaid_accounts pa
+            JOIN plaid_items pi ON pi.item_id = pa.item_id
+            WHERE pa.item_id = ?
+        """, (item_id,)).fetchall()
+    else:
+        rows = cur.execute("""
+            SELECT pa.*, pi.institution_name FROM plaid_accounts pa
+            JOIN plaid_items pi ON pi.item_id = pa.item_id
+        """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_item(item_id: str):
+    """Unlinks a bank locally: drops the item plus its accounts and transactions."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM plaid_transactions WHERE item_id = ?", (item_id,))
+    cur.execute("DELETE FROM plaid_accounts WHERE item_id = ?", (item_id,))
+    cur.execute("DELETE FROM plaid_items WHERE item_id = ?", (item_id,))
     conn.commit()
     conn.close()
 

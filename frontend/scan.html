@@ -211,6 +211,40 @@
             color: #E8492D;
         }
 
+        #scanQueue {
+            margin-top: 16px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .queue-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            background: rgba(244, 237, 226, 0.06);
+            font-size: 13px;
+        }
+        .queue-row .queue-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: rgba(244, 237, 226, 0.85);
+        }
+        .queue-row .queue-status {
+            flex-shrink: 0;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .queue-row.pending .queue-status { color: rgba(244, 237, 226, 0.4); }
+        .queue-row.loading .queue-status { color: #F0B93E; }
+        .queue-row.success .queue-status { color: #7C9A79; }
+        .queue-row.error .queue-status { color: #E8492D; }
+
         .scan-formats {
             margin-top: 14px;
             font-size: 12px;
@@ -360,11 +394,12 @@
                 <div class="drop-title">Drop your receipt here</div>
                 <div class="drop-sub">or click to browse files</div>
 
-                <input type="file" id="fileInput" accept="image/*,application/pdf" />
-                <label for="fileInput" class="btn-upload" id="uploadLabel">Choose file</label>
+                <input type="file" id="fileInput" accept="image/*,application/pdf" multiple />
+                <label for="fileInput" class="btn-upload" id="uploadLabel">Choose files</label>
 
                 <div id="fileName"></div>
                 <div id="scanStatus"></div>
+                <div id="scanQueue"></div>
 
                 <div class="scan-formats">
                     <span>JPEG</span>
@@ -454,31 +489,76 @@
                 fileInput.click();
             });
 
-            fileInput.addEventListener('change', async function(e) {
-                const f = e.target.files[0];
-                if (!f) return;
+            const queueEl = document.getElementById('scanQueue');
+            const API_BASE = 'http://localhost:8000';
 
-                fileName.textContent = 'Selected: ' + f.name;
-
+            async function uploadOne(file) {
                 const formData = new FormData();
-                formData.append('file', f);
+                formData.append('file', file);
+                const res = await fetch(`${API_BASE}/extract`, { method: 'POST', body: formData });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error('Server responded ' + res.status + ': ' + text);
+                }
+                return res.json();
+            }
 
-                setStatus('Processing (OCR + LLM)… this may take a moment.', 'loading');
+            fileInput.addEventListener('change', async function(e) {
+                const files = Array.from(e.target.files || []);
+                if (!files.length) return;
 
-                try {
-                    const res = await fetch('/extract', { method: 'POST', body: formData });
-                    if (!res.ok) {
-                        const text = await res.text();
-                        throw new Error('Server responded ' + res.status + ': ' + text);
+                fileName.textContent = files.length === 1
+                    ? 'Selected: ' + files[0].name
+                    : `Selected: ${files.length} receipts`;
+                queueEl.innerHTML = '';
+
+                // One row per file so progress on a multi-file batch is visible
+                // as each receipt finishes its own OCR + LLM pass.
+                const rows = files.map(f => {
+                    const row = document.createElement('div');
+                    row.className = 'queue-row pending';
+                    row.innerHTML = `<span class="queue-name">${f.name}</span><span class="queue-status">Queued</span>`;
+                    queueEl.appendChild(row);
+                    return row;
+                });
+
+                setStatus(`Processing ${files.length} receipt${files.length > 1 ? 's' : ''} (OCR + LLM)… this may take a moment.`, 'loading');
+
+                let successCount = 0;
+                let lastReceiptId = null;
+
+                for (let i = 0; i < files.length; i++) {
+                    const row = rows[i];
+                    row.className = 'queue-row loading';
+                    row.querySelector('.queue-status').textContent = 'Processing…';
+                    try {
+                        const data = await uploadOne(files[i]);
+                        row.className = 'queue-row success';
+                        row.querySelector('.queue-status').textContent =
+                            '€' + data.data.total.toFixed(2);
+                        successCount++;
+                        lastReceiptId = data.receipt_id;
+                    } catch (err) {
+                        console.error(err);
+                        row.className = 'queue-row error';
+                        row.querySelector('.queue-status').textContent = 'Failed';
                     }
-                    const data = await res.json();
-                    setStatus('Saved: ' + data.data.store_name + ' — €' + data.data.total.toFixed(2), 'success');
+                }
+
+                if (successCount === files.length) {
+                    setStatus(`Saved ${successCount} of ${files.length} receipt${files.length > 1 ? 's' : ''}.`, 'success');
+                } else if (successCount > 0) {
+                    setStatus(`Saved ${successCount} of ${files.length} — some failed, see list above.`, 'error');
+                } else {
+                    setStatus('All uploads failed — see list above.', 'error');
+                }
+
+                // Only auto-navigate for a single, successful scan; batches
+                // stay on this page so the whole queue's status is visible.
+                if (files.length === 1 && successCount === 1) {
                     setTimeout(function() {
-                        location.href = 'receipt.html?id=' + data.receipt_id;
+                        location.href = 'receipt.html?id=' + lastReceiptId;
                     }, 1200);
-                } catch (err) {
-                    console.error(err);
-                    setStatus('Error: ' + err.message, 'error');
                 }
             });
 

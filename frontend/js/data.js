@@ -85,11 +85,40 @@ async function fetchUnmatchedTransactions() {
         category: (t.category || "other").toLowerCase(),
         total: Math.abs(t.amount),
         no_receipt: true,
+        item_id: t.item_id || null,
       }));
   } catch (err) {
     console.warn("Falling back to mock bank transactions — API not reachable:", err.message);
     return UNMATCHED_TRANSACTIONS;
   }
+}
+
+async function fetchAccounts() {
+  try {
+    const res = await fetch(`${API_BASE}/plaid/accounts`);
+    if (!res.ok) throw new Error(`Server responded ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn("Falling back to no accounts — API not reachable:", err.message);
+    return [];
+  }
+}
+
+async function fetchLinkedBanks() {
+  try {
+    const res = await fetch(`${API_BASE}/plaid/items`);
+    if (!res.ok) throw new Error(`Server responded ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn("Falling back to no linked banks — API not reachable:", err.message);
+    return [];
+  }
+}
+
+async function unlinkBank(itemId) {
+  const res = await fetch(`${API_BASE}/plaid/unlink/${encodeURIComponent(itemId)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to unlink (${res.status})`);
+  return res.json();
 }
 
 async function fetchReceiptById(id) {
@@ -117,11 +146,11 @@ async function plaidGetLinkToken() {
   return data.link_token;
 }
 
-async function plaidExchangePublicToken(publicToken) {
+async function plaidExchangePublicToken(publicToken, institutionName) {
   const res = await fetch(`${API_BASE}/plaid/exchange_public_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ public_token: publicToken }),
+    body: JSON.stringify({ public_token: publicToken, institution_name: institutionName || null }),
   });
   if (!res.ok) throw new Error(`Failed to exchange public token (${res.status})`);
   return res.json();
@@ -150,7 +179,7 @@ function wireConnectBank(buttonId, { onConnected } = {}) {
         onSuccess: async (publicToken, metadata) => {
           btn.textContent = "Syncing…";
           try {
-            const { item_id } = await plaidExchangePublicToken(publicToken);
+            const { item_id } = await plaidExchangePublicToken(publicToken, metadata.institution?.name);
             btn.textContent = `Connected ${metadata.institution?.name || "bank"}`;
             if (onConnected) await onConnected(item_id);
           } catch (err) {
@@ -175,6 +204,146 @@ function wireConnectBank(buttonId, { onConnected } = {}) {
       console.error(err);
       btn.disabled = false;
       btn.textContent = originalLabel;
+      alert(`Error: ${err.message}`);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Banks modal — shows every linked bank (with unlink) plus a button to
+// connect another one. Any page just calls wireBanksButton('some-btn-id').
+// ---------------------------------------------------------------------
+function ensureBanksModal() {
+  if (document.getElementById("banks-modal")) return;
+  const modal = document.createElement("div");
+  modal.id = "banks-modal";
+  modal.className = "banks-modal";
+  modal.innerHTML = `
+    <div class="banks-modal-backdrop"></div>
+    <div class="banks-modal-panel">
+      <div class="banks-modal-head">
+        <h3>Linked banks</h3>
+        <button type="button" class="banks-modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="banks-modal-list" id="banksModalList"><div class="banks-modal-empty">Loading…</div></div>
+      <button type="button" class="banks-modal-add" id="banksModalAdd">+ Connect another bank</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector(".banks-modal-backdrop").addEventListener("click", closeBanksModal);
+  modal.querySelector(".banks-modal-close").addEventListener("click", closeBanksModal);
+}
+
+function closeBanksModal() {
+  const modal = document.getElementById("banks-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function renderBanksModalList() {
+  const listEl = document.getElementById("banksModalList");
+  listEl.innerHTML = `<div class="banks-modal-empty">Loading…</div>`;
+  const [banks, accounts] = await Promise.all([fetchLinkedBanks(), fetchAccounts()]);
+  if (!banks.length) {
+    listEl.innerHTML = `<div class="banks-modal-empty">No banks connected yet.</div>`;
+    return;
+  }
+  listEl.innerHTML = "";
+  banks.forEach(bank => {
+    const bankAccounts = accounts.filter(a => a.item_id === bank.item_id);
+    const balanceTotal = bankAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
+    const mask = bankAccounts[0]?.mask ? `**** ${bankAccounts[0].mask}` : "";
+    const balanceLabel = bankAccounts.length ? `€${balanceTotal.toFixed(2)}` : "Balance unavailable";
+    const row = document.createElement("div");
+    row.className = "banks-modal-row";
+    row.innerHTML = `
+      <div class="banks-modal-row-icon">🏦</div>
+      <div class="banks-modal-row-meta">
+        <div class="banks-modal-row-name">${bank.institution_name || "Connected bank"}</div>
+        <div class="banks-modal-row-sub">${mask ? mask + " · " : ""}${balanceLabel}</div>
+      </div>
+      <button type="button" class="banks-modal-row-unlink" data-item-id="${bank.item_id}">Unlink</button>
+    `;
+    listEl.appendChild(row);
+  });
+  listEl.querySelectorAll(".banks-modal-row-unlink").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const itemId = btn.dataset.itemId;
+      if (!confirm("Unlink this bank? Its transactions will stop syncing.")) return;
+      btn.disabled = true;
+      btn.textContent = "Unlinking…";
+      try {
+        await unlinkBank(itemId);
+        await renderBanksModalList();
+        if (window.__onBankChanged) window.__onBankChanged();
+      } catch (err) {
+        console.error(err);
+        alert(`Error unlinking: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = "Unlink";
+      }
+    });
+  });
+}
+
+async function openBanksModal() {
+  ensureBanksModal();
+  document.getElementById("banks-modal").classList.add("open");
+  await renderBanksModalList();
+}
+
+// Wires a button to open the Banks modal (list + unlink + add-another-bank).
+// Pass onBankChanged to refresh whatever balance/activity UI the page shows.
+function wireBanksButton(buttonId, { onBankChanged } = {}) {
+  const btn = document.getElementById(buttonId);
+  if (!btn) {
+    console.warn(`wireBanksButton: no element with id "${buttonId}"`);
+    return;
+  }
+  if (onBankChanged) window.__onBankChanged = onBankChanged;
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    openBanksModal();
+  });
+
+  ensureBanksModal();
+  document.getElementById("banksModalAdd").addEventListener("click", async () => {
+    const addBtn = document.getElementById("banksModalAdd");
+    const originalLabel = addBtn.textContent;
+    addBtn.disabled = true;
+    addBtn.textContent = "Preparing…";
+    try {
+      const linkToken = await plaidGetLinkToken();
+      const handler = Plaid.create({
+        token: linkToken,
+        onSuccess: async (publicToken, metadata) => {
+          addBtn.textContent = "Syncing…";
+          try {
+            await plaidExchangePublicToken(publicToken, metadata.institution?.name);
+            await renderBanksModalList();
+            if (window.__onBankChanged) window.__onBankChanged();
+          } catch (err) {
+            console.error(err);
+            alert(`Error connecting bank: ${err.message}`);
+          } finally {
+            addBtn.disabled = false;
+            addBtn.textContent = originalLabel;
+          }
+        },
+        onExit: (err) => {
+          addBtn.disabled = false;
+          addBtn.textContent = originalLabel;
+          if (err) {
+            console.error(err);
+            alert(`Link closed with error: ${err.error_message || err.error_code}`);
+          }
+        },
+      });
+      handler.open();
+    } catch (err) {
+      console.error(err);
+      addBtn.disabled = false;
+      addBtn.textContent = originalLabel;
       alert(`Error: ${err.message}`);
     }
   });

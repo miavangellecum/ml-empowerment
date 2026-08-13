@@ -534,6 +534,7 @@
 
             <!-- filter + total -->
             <div class="filter-row" id="filterRow"></div>
+            <div class="filter-row" id="sortRow"></div>
             <div class="feed-total" id="feedTotal"></div>
 
             <!-- accordion list -->
@@ -589,7 +590,30 @@
                 filterRow.appendChild(a);
             });
 
-            const filtered = activeCat ? allReceipts.filter(r => r.category === activeCat) : allReceipts;
+            let filtered = activeCat ? allReceipts.filter(r => r.category === activeCat) : allReceipts;
+
+            // ── sort ──
+            const SORTS = {
+                'date-desc': { label: 'Newest', cmp: (a, b) => new Date(b.date || 0) - new Date(a.date || 0) },
+                'date-asc':  { label: 'Oldest', cmp: (a, b) => new Date(a.date || 0) - new Date(b.date || 0) },
+                'amount-desc': { label: 'Amount ↓', cmp: (a, b) => b.total - a.total },
+                'amount-asc':  { label: 'Amount ↑', cmp: (a, b) => a.total - b.total },
+                'store-asc': { label: 'Store A–Z', cmp: (a, b) => (a.store_name || '').localeCompare(b.store_name || '') },
+            };
+            const activeSort = SORTS[params.get('sort')] ? params.get('sort') : 'date-desc';
+
+            const sortRow = document.getElementById('sortRow');
+            Object.entries(SORTS).forEach(([key, def]) => {
+                const a = document.createElement('a');
+                a.textContent = def.label;
+                a.className = 'filter-chip' + (key === activeSort ? ' active' : '');
+                const p = new URLSearchParams(location.search);
+                p.set('sort', key);
+                a.href = `receipts.html?${p.toString()}`;
+                sortRow.appendChild(a);
+            });
+
+            filtered = [...filtered].sort(SORTS[activeSort].cmp);
 
             // ── total ──
             const totalEl = document.getElementById('feedTotal');

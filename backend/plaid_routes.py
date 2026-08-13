@@ -5,6 +5,8 @@ from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
+from plaid.model.accounts_get_request import AccountsGetRequest
+from plaid.model.item_remove_request import ItemRemoveRequest
 
 from backend.plaid_client import client, PLAID_PRODUCTS, PLAID_COUNTRY_CODES
 from backend import plaid_db
@@ -18,6 +20,9 @@ DEMO_USER_ID = "demo-user"
 
 class ExchangeRequest(BaseModel):
     public_token: str
+    # Plaid Link hands this back in onSuccess metadata — passing it through
+    # lets us label each bank without an extra /institutions/get_by_id call.
+    institution_name: str | None = None
 
 
 @router.post("/create_link_token")
@@ -45,10 +50,11 @@ async def exchange_public_token(req: ExchangeRequest):
         access_token = response["access_token"]
         item_id = response["item_id"]
 
-        plaid_db.save_item(item_id, access_token)
+        plaid_db.save_item(item_id, access_token, req.institution_name)
 
         # Do an initial sync right away so the frontend has data to show.
         _sync_item(item_id, access_token)
+        _refresh_accounts(item_id, access_token)
 
         return {"item_id": item_id}
     except plaid.ApiException as e:
@@ -78,6 +84,48 @@ async def list_items():
     for i in items:
         i.pop("access_token", None)  # never expose access tokens to the frontend
     return items
+
+
+@router.get("/accounts")
+async def list_accounts(item_id: str | None = None):
+    """Live account + balance list, grouped by bank. Refreshes from Plaid on
+    every call so the dashboard's balance card is never stale."""
+    items = [plaid_db.get_item(item_id)] if item_id else plaid_db.get_all_items()
+    for item in items:
+        if not item:
+            continue
+        try:
+            _refresh_accounts(item["item_id"], item["access_token"])
+        except plaid.ApiException:
+            # Item may need re-auth (e.g. expired sandbox credentials) — fall
+            # back to whatever balance snapshot we last stored for it.
+            continue
+    accounts = plaid_db.get_accounts(item_id)
+    for a in accounts:
+        a.pop("id", None)
+    return accounts
+
+
+@router.delete("/unlink/{item_id}")
+async def unlink_item(item_id: str):
+    item = plaid_db.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Unknown item_id")
+    try:
+        client.item_remove(ItemRemoveRequest(access_token=item["access_token"]))
+    except plaid.ApiException:
+        # Best-effort: even if Plaid-side revocation fails (e.g. a sandbox
+        # item that's already gone), still drop our local copy so the user
+        # can unlink and retry cleanly instead of getting stuck.
+        pass
+    plaid_db.delete_item(item_id)
+    return {"unlinked": item_id}
+
+
+def _refresh_accounts(item_id: str, access_token: str):
+    request = AccountsGetRequest(access_token=access_token)
+    response = client.accounts_get(request).to_dict()
+    plaid_db.upsert_accounts(item_id, response.get("accounts", []))
 
 
 def _sync_item(item_id: str, access_token: str, cursor: str | None = None):

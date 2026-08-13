@@ -26,15 +26,16 @@
 
     <div class="topbar">
       <div class="brand">◐ Spend</div>
-      <button id="connect-bank-btn">🏦 Connect bank</button>
+      <button id="banks-btn">🏦 Banks</button>
     </div>
 
     <div class="title-block">
       <h1>Budgeting and<br>Spending Insights</h1>
     </div>
 
-    <div class="balance-label">TOTAL BALANCE · **** 8345</div>
-    <div class="balance-amount">€2,412.60</div>
+    <div class="balance-label" id="balanceLabel">TOTAL BALANCE</div>
+    <div class="balance-amount" id="balanceAmount">—</div>
+    <div class="bank-filter-row" id="bankFilterRow"></div>
     <div class="balance-tiles">
       <div class="balance-tile">This week<b id="weekSpend">—</b></div>
       <div class="balance-tile">Receipts scanned<b id="receiptCount">—</b></div>
@@ -65,6 +66,83 @@
 
 <script src="js/data.js"></script>
 <script>
+let activeBankItemId = null; // null = "All banks"
+
+async function renderBalance() {
+  const accounts = await fetchAccounts();
+  const labelEl = document.getElementById('balanceLabel');
+  const amountEl = document.getElementById('balanceAmount');
+  const chipRow = document.getElementById('bankFilterRow');
+  chipRow.innerHTML = '';
+
+  if (!accounts.length) {
+    labelEl.textContent = 'TOTAL BALANCE · No bank connected';
+    amountEl.textContent = '€0.00';
+    return;
+  }
+
+  // group accounts by bank so multiple linked banks are distinguishable
+  const byBank = {};
+  accounts.forEach(a => {
+    if (!byBank[a.item_id]) byBank[a.item_id] = { name: a.institution_name || 'Bank', accounts: [] };
+    byBank[a.item_id].accounts.push(a);
+  });
+  const bankIds = Object.keys(byBank);
+
+  if (bankIds.length > 1) {
+    const allChip = document.createElement('button');
+    allChip.type = 'button';
+    allChip.className = 'bank-filter-chip' + (activeBankItemId === null ? ' active' : '');
+    allChip.textContent = 'All banks';
+    allChip.addEventListener('click', () => { activeBankItemId = null; renderBalance(); renderActivity(); });
+    chipRow.appendChild(allChip);
+
+    bankIds.forEach(itemId => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'bank-filter-chip' + (activeBankItemId === itemId ? ' active' : '');
+      chip.textContent = byBank[itemId].name;
+      chip.addEventListener('click', () => { activeBankItemId = itemId; renderBalance(); renderActivity(); });
+      chipRow.appendChild(chip);
+    });
+  }
+
+  const visibleAccounts = activeBankItemId ? (byBank[activeBankItemId]?.accounts || []) : accounts;
+  const total = visibleAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
+  const currency = visibleAccounts[0]?.iso_currency_code === 'USD' ? '$' : '€';
+  const mask = visibleAccounts[0]?.mask ? `**** ${visibleAccounts[0].mask}` : `${visibleAccounts.length} account${visibleAccounts.length===1?'':'s'}`;
+  const label = activeBankItemId
+    ? `${byBank[activeBankItemId].name.toUpperCase()} BALANCE · ${mask}`
+    : `TOTAL BALANCE · ${mask}`;
+
+  labelEl.textContent = label;
+  amountEl.textContent = currency + total.toFixed(2);
+}
+
+async function renderActivity() {
+  const activity = await fetchRecentActivity();
+  const visible = activeBankItemId
+    ? activity.filter(a => !a.item_id || a.item_id === activeBankItemId)
+    : activity;
+
+  const listEl = document.getElementById('activityList');
+  listEl.innerHTML = '';
+  visible.slice(0,6).forEach(r=>{
+    const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
+    const a = document.createElement(r.no_receipt ? 'div' : 'a');
+    a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
+    if(!r.no_receipt) a.href = `receipt.html?id=${r.id}`;
+    a.innerHTML = `
+      <div class="icon">${r.no_receipt ? '⚠️' : meta.icon}</div>
+      <div class="meta">
+        <div class="name">${r.store_name}</div>
+        <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
+      </div>
+      <div class="amt">−€${r.total.toFixed(2)}</div>`;
+    listEl.appendChild(a);
+  });
+}
+
 (async function(){
   const receipts = await fetchReceipts();
   const activity = await fetchRecentActivity();
@@ -74,6 +152,8 @@
   document.getElementById('missingCount').textContent = missing.length;
   const weekTotal = activity.reduce((s,a)=>s+a.total,0);
   document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+
+  await renderBalance();
 
   const totals = {};
   receipts.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
@@ -106,21 +186,7 @@
     field.appendChild(b);
   });
 
-  const listEl = document.getElementById('activityList');
-  activity.slice(0,6).forEach(r=>{
-    const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
-    const a = document.createElement(r.no_receipt ? 'div' : 'a');
-    a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
-    if(!r.no_receipt) a.href = `receipt.html?id=${r.id}`;
-    a.innerHTML = `
-      <div class="icon">${r.no_receipt ? '⚠️' : meta.icon}</div>
-      <div class="meta">
-        <div class="name">${r.store_name}</div>
-        <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
-      </div>
-      <div class="amt">−€${r.total.toFixed(2)}</div>`;
-    listEl.appendChild(a);
-  });
+  await renderActivity();
 
   const circles = document.querySelectorAll('.circle');
   function tilt(x,y){
@@ -134,10 +200,12 @@
   window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
   window.addEventListener('touchmove', e=>{ const t=e.touches[0]; tilt(t.clientX,t.clientY); }, {passive:true});
 
-  // Connect-bank button — same id everywhere, wired once via data.js.
-  wireConnectBank('connect-bank-btn', {
-    onConnected: async () => {
-      setTimeout(() => location.reload(), 900);
+  // Banks button — opens the linked-banks overview (connect/unlink), wired via data.js.
+  wireBanksButton('banks-btn', {
+    onBankChanged: async () => {
+      activeBankItemId = null;
+      await renderBalance();
+      await renderActivity();
     }
   });
 })();
