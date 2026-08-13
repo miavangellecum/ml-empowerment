@@ -60,12 +60,28 @@ def update_cursor(item_id: str, cursor: str):
 def upsert_transactions(item_id: str, transactions: list[dict]) -> list[str]:
     """Inserts/updates transactions, embedding merchant_name (falling back
     to name) for vector matching. Returns the UUIDs of rows that were newly
-    inserted (as opposed to updated), so callers can run the matcher only
-    against genuinely new transactions."""
+    inserted (as opposed to updated).
+
+    Insert-vs-update is determined by checking which transaction_ids already
+    exist *before* the upsert runs, rather than the common Postgres
+    `(xmax = 0)` trick — CockroachDB doesn't use Postgres's physical MVCC
+    storage internally, so it has no xmin/xmax system columns to query.
+    """
+    if not transactions:
+        return []
+
     new_ids: list[str] = []
+    incoming_tx_ids = [t["transaction_id"] for t in transactions]
 
     with get_conn() as conn:
         cur = conn.cursor()
+
+        cur.execute(
+            "SELECT transaction_id FROM plaid_transactions WHERE transaction_id = ANY(%s)",
+            (incoming_tx_ids,),
+        )
+        existing_tx_ids = {row[0] for row in cur.fetchall()}
+
         for t in transactions:
             category = t.get("category")
             if isinstance(category, list):
@@ -90,7 +106,7 @@ def upsert_transactions(item_id: str, transactions: list[dict]) -> list[str]:
                     category = excluded.category,
                     date = excluded.date,
                     pending = excluded.pending
-                RETURNING id, (xmax = 0) AS inserted
+                RETURNING id
                 """,
                 (
                     t["transaction_id"], item_id, t.get("account_id"), t.get("name"),
@@ -99,8 +115,8 @@ def upsert_transactions(item_id: str, transactions: list[dict]) -> list[str]:
                     bool(t.get("pending", False)),
                 ),
             )
-            row_id, inserted = cur.fetchone()
-            if inserted:
+            row_id = cur.fetchone()[0]
+            if t["transaction_id"] not in existing_tx_ids:
                 new_ids.append(str(row_id))
         cur.close()
 

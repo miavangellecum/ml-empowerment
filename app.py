@@ -9,10 +9,11 @@ load_dotenv()
 from extraction.extraction import process_receipt
 from db.db import save_receipt, get_receipts, init_db
 from db.matcher import match_receipt
-
 from backend.aws_clients import upload_file_to_s3
+
 from backend.plaid_routes import router as plaid_router
 from backend.matches_routes import router as matches_router
+from backend.reports_routes import router as reports_router
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -21,6 +22,7 @@ init_db()
 
 app.include_router(plaid_router)
 app.include_router(matches_router)
+app.include_router(reports_router)
 
 
 @app.post("/extract")

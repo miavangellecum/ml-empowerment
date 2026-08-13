@@ -17,7 +17,8 @@ async def list_matches(status: str | None = None):
         cur = conn.cursor()
         query = """
             SELECT m.id, m.status, m.confidence, m.matched_by, m.created_at,
-                   r.id AS receipt_id, r.store_name, r.total AS receipt_total, r.date AS receipt_date,
+                   r.id AS receipt_id, r.store_name, r.total AS receipt_total,
+                   r.date AS receipt_date, r.s3_url AS receipt_s3_url,
                    t.id AS transaction_id, t.name, t.merchant_name, t.amount, t.date AS tx_date
             FROM receipt_transaction_matches m
             JOIN receipts r ON r.id = m.receipt_id
@@ -90,13 +91,13 @@ async def overview():
         unmatched_transactions = cur.fetchone()[0]
 
         cur.execute(
-            "SELECT COUNT(*) FROM line_items WHERE category IS NULL OR category = 'other'"
+            "SELECT COUNT(*) FROM line_items WHERE category IS NULL OR category = 'other_expenses'"
         )
         uncategorized_count = cur.fetchone()[0]
 
         cur.execute(
             "SELECT COALESCE(SUM(total_price), 0) FROM line_items "
-            "WHERE category IS NULL OR category = 'other'"
+            "WHERE category IS NULL OR category = 'other_expenses'"
         )
         uncategorized_amount = cur.fetchone()[0]
 
