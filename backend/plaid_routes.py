@@ -33,6 +33,7 @@ async def create_link_token():
         response = client.link_token_create(request)
         return {"link_token": response.to_dict()["link_token"]}
     except plaid.ApiException as e:
+        print("PLAID ERROR:", e.body)
         raise HTTPException(status_code=400, detail=e.body)
 
 
@@ -110,3 +111,4 @@ def _sync_item(item_id: str, access_token: str, cursor: str | None = None):
 
     plaid_db.update_cursor(item_id, cursor)
     return added_count, modified_count, removed_count
+

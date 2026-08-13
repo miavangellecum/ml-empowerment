@@ -9,143 +9,11 @@
     <link rel="stylesheet" href="css/style.css" />
 
     <style>
-        /* ── reset / base ── */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body.theme-dark {
-            background: #231F1A;
-            color: #F4EDE2;
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
-            overflow-x: hidden;
-            padding-bottom: 80px;
-        }
-
-        /* ── floating field – solid, unblurred circles ── */
-        .field {
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 0;
-            overflow: hidden;
-        }
-        .field .circle {
-            position: absolute;
-            border-radius: 50%;
-            opacity: 0.35;
-            will-change: transform;
-            transition: transform 0.08s ease-out;
-            /* solid, no gradient, no blur */
-        }
-        .field .c1 {
-            width: 180px;
-            height: 180px;
-            background: #E8492D;
-            top: 4%;
-            left: 2%;
-        }
-        .field .c2 {
-            width: 140px;
-            height: 140px;
-            background: #F0B93E;
-            bottom: 14%;
-            right: 3%;
-        }
-        .field .c3 {
-            width: 120px;
-            height: 120px;
-            background: #7C9A79;
-            top: 46%;
-            left: 80%;
-        }
-        .field .c4 {
-            width: 100px;
-            height: 100px;
-            background: #7A4B5C;
-            bottom: 40%;
-            left: 1%;
-        }
-        .field .c5 {
-            width: 80px;
-            height: 80px;
-            background: #4A7C8A;
-            top: 22%;
-            left: 46%;
-        }
-        .field .c6 {
-            width: 60px;
-            height: 60px;
-            background: #E8492D;
-            bottom: 8%;
-            left: 28%;
-        }
-
-        /* ── scene / content ── */
-        .scene {
-            position: relative;
-            z-index: 1;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px 20px 120px;
-        }
-
-        /* ── topbar ── */
-        .topbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0 24px;
-            border-bottom: 1px solid rgba(244, 237, 226, 0.08);
-            margin-bottom: 24px;
-        }
-        .topbar .brand {
-            font-family: 'Space Grotesk', sans-serif;
-            font-weight: 700;
-            font-size: 20px;
-            letter-spacing: -0.3px;
-            color: #F4EDE2;
-        }
-        #connect-bank-btn {
-            background: rgba(244, 237, 226, 0.08);
-            border: 1px solid rgba(244, 237, 226, 0.12);
-            color: #F4EDE2;
-            padding: 8px 18px;
-            border-radius: 999px;
-            font-family: 'Inter', sans-serif;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s;
-        }
-        #connect-bank-btn:hover {
-            background: rgba(244, 237, 226, 0.16);
-            border-color: rgba(244, 237, 226, 0.25);
-        }
-
-        /* ── title ── */
-        .title-block {
-            margin-bottom: 28px;
-        }
-        .title-block .chev {
-            font-size: 28px;
-            line-height: 1;
-            color: rgba(244, 237, 226, 0.2);
-            margin-bottom: 2px;
-            transform: rotate(180deg);
-            display: inline-block;
-        }
-        .title-block h1 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-weight: 700;
-            font-size: 32px;
-            letter-spacing: -0.5px;
-            color: #F4EDE2;
-            margin: 0;
-        }
+        /* Note: body.theme-dark, .field/.circle/.c1-c5, .scene, .content,
+           .topbar, .brand, #connect-bank-btn, and .title-block are already
+           defined in css/style.css (shared with index.html) — don't
+           redeclare them here, or this page silently drifts out of sync
+           with the rest of the app. Only page-specific styles below. */
         .title-block p {
             color: rgba(244, 237, 226, 0.5);
             font-size: 14px;
@@ -239,19 +107,19 @@
             border-color: rgba(244, 237, 226, 0.15);
         }
 
-        /* ── 5‑color rotation ── */
+        /* ── 5‑color rotation, using the site's actual palette ── */
         .accordion-item:nth-child(5n+1) {
-            background: #FF6B6B;
-            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.30);
+            background: var(--red);
+            box-shadow: 0 4px 20px rgba(232, 73, 45, 0.30);
         }
         .accordion-item:nth-child(5n+2) {
-            background: #4ECDC4;
-            box-shadow: 0 4px 20px rgba(78, 205, 196, 0.30);
+            background: var(--teal);
+            box-shadow: 0 4px 20px rgba(62, 110, 104, 0.30);
         }
         .accordion-item:nth-child(5n+3) {
-            background: #FFD93D;
+            background: var(--mustard);
             color: #231F1A;
-            box-shadow: 0 4px 20px rgba(255, 217, 61, 0.30);
+            box-shadow: 0 4px 20px rgba(240, 185, 62, 0.30);
         }
         .accordion-item:nth-child(5n+3) .accordion-amount {
             color: #231F1A;
@@ -295,12 +163,12 @@
         }
 
         .accordion-item:nth-child(5n+4) {
-            background: #6C5B7B;
-            box-shadow: 0 4px 20px rgba(108, 91, 123, 0.35);
+            background: var(--plum);
+            box-shadow: 0 4px 20px rgba(122, 75, 92, 0.35);
         }
         .accordion-item:nth-child(5n+5) {
-            background: #FF8A5C;
-            box-shadow: 0 4px 20px rgba(255, 138, 92, 0.35);
+            background: var(--sage);
+            box-shadow: 0 4px 20px rgba(124, 154, 121, 0.35);
         }
 
         /* expanded state overrides — keep base but lift */
@@ -532,79 +400,8 @@
             pointer-events: none;
         }
 
-        /* ── actionbar (nav) – matches index.html exactly ── */
-        .actionbar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(35, 31, 26, 0.92);
-            backdrop-filter: blur(12px);
-            border-top: 1px solid rgba(244, 237, 226, 0.06);
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            padding: 10px 16px 18px;
-            z-index: 100;
-            font-family: 'Inter', sans-serif;
-        }
-        .actionbar a {
-            text-decoration: none;
-            color: rgba(244, 237, 226, 0.5);
-            font-size: 13px;
-            font-weight: 500;
-            padding: 6px 12px;
-            border-radius: 999px;
-            transition: background 0.2s, color 0.2s;
-        }
-        .actionbar a.active {
-            color: #F4EDE2;
-            background: rgba(244, 237, 226, 0.10);
-        }
-        .actionbar a:hover:not(.active) {
-            color: rgba(244, 237, 226, 0.8);
-        }
-        .actionbar .scan-btn {
-            background: #E8492D;
-            color: #fff;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 26px;
-            font-weight: 300;
-            padding: 0;
-            margin-top: -14px;
-            box-shadow: 0 6px 24px rgba(232, 73, 45, 0.35);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .actionbar .scan-btn:hover {
-            transform: scale(1.04);
-            box-shadow: 0 8px 32px rgba(232, 73, 45, 0.45);
-            color: #fff;
-        }
-
         /* ── responsive ── */
         @media (max-width: 600px) {
-            .scene {
-                padding: 12px 14px 100px;
-            }
-            .topbar {
-                padding: 8px 0 16px;
-                margin-bottom: 16px;
-            }
-            .topbar .brand {
-                font-size: 17px;
-            }
-            #connect-bank-btn {
-                font-size: 12px;
-                padding: 6px 14px;
-            }
-            .title-block h1 {
-                font-size: 26px;
-            }
             .accordion-item {
                 padding: 14px 14px;
                 border-radius: 16px;
@@ -640,43 +437,6 @@
             }
             .detail-summary-row.total {
                 font-size: 13px;
-            }
-            .actionbar {
-                padding: 8px 10px 14px;
-            }
-            .actionbar a {
-                font-size: 12px;
-                padding: 4px 10px;
-            }
-            .actionbar .scan-btn {
-                width: 42px;
-                height: 42px;
-                font-size: 22px;
-                margin-top: -10px;
-            }
-            .field .c1 {
-                width: 130px;
-                height: 130px;
-            }
-            .field .c2 {
-                width: 110px;
-                height: 110px;
-            }
-            .field .c3 {
-                width: 90px;
-                height: 90px;
-            }
-            .field .c4 {
-                width: 75px;
-                height: 75px;
-            }
-            .field .c5 {
-                width: 65px;
-                height: 65px;
-            }
-            .field .c6 {
-                width: 50px;
-                height: 50px;
             }
         }
 
@@ -748,14 +508,13 @@
 
 <body class="theme-dark">
 
-    <!-- ── floating circles – solid, unblurred, 6 circles with random positions ── -->
+    <!-- ── floating circles – matches index.html exactly ── -->
     <div class="field" id="field">
         <div class="circle c1"></div>
         <div class="circle c2"></div>
         <div class="circle c3"></div>
         <div class="circle c4"></div>
         <div class="circle c5"></div>
-        <div class="circle c6"></div>
     </div>
 
     <!-- ── main scene ── -->
@@ -765,12 +524,10 @@
             <!-- topbar -->
             <div class="topbar">
                 <div class="brand">◐ Spend</div>
-                <button id="connect-bank-btn">🏦 Connect bank</button>
             </div>
 
             <!-- title -->
             <div class="title-block">
-                <div class="chev">⌄</div>
                 <h1>My Receipts</h1>
                 <p>Tap any receipt to expand and see details.</p>
             </div>
@@ -787,7 +544,7 @@
         </div>
     </div>
 
-    <!-- ── bottom nav (actionbar) – matches index.html exactly ── -->
+    <!-- ── bottom nav (actionbar) ── -->
     <nav class="actionbar">
         <a href="receipts.html" class="active">My Receipts</a>
         <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
@@ -814,15 +571,6 @@
                 const t = e.touches[0];
                 if (t) tilt(t.clientX, t.clientY);
             }, { passive: true });
-
-            // ── connect bank ──
-            if (typeof wireConnectBank === 'function') {
-                wireConnectBank('connect-bank-btn', {
-                    onConnected: async () => {
-                        setTimeout(() => location.reload(), 900);
-                    }
-                });
-            }
 
             // ── data ──
             const allReceipts = await fetchReceipts();

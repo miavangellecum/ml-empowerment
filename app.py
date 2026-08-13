@@ -21,7 +21,6 @@ init_plaid_db()
 
 app.include_router(plaid_router)
 
-
 @app.post("/extract")
 async def extract_receipt(file: UploadFile = File(...)):
     temp_path = f"temp_{file.filename}"
