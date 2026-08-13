@@ -8,6 +8,7 @@ from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 from backend.plaid_client import client, PLAID_PRODUCTS, PLAID_COUNTRY_CODES
 from backend import plaid_db
+from db.matcher import match_transaction
 
 router = APIRouter(prefix="/plaid", tags=["plaid"])
 
@@ -97,7 +98,14 @@ def _sync_item(item_id: str, access_token: str, cursor: str | None = None):
         removed = response.get("removed", [])
 
         if added or modified:
-            plaid_db.upsert_transactions(item_id, added + modified)
+
+            new_transaction_ids = plaid_db.upsert_transactions(item_id, added + modified)
+
+            # Only genuinely new transactions need the matching agent —
+            # updates to already-matched rows don't need re-matching.
+            for tx_id in new_transaction_ids:
+                match_transaction(tx_id)
+
         if removed:
             plaid_db.remove_transactions([r["transaction_id"] for r in removed])
 
