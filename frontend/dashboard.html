@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spend — Dashboard Concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" /></head>
+<body>
+<div class="stage">
+  <div class="head">
+    <div>
+      <h1>Budgeting &amp; Spending Insights</h1>
+      <p>A visual concept for the receipts dashboard — move your cursor over the balance card, tap the category bubbles, hover the bars.</p>
+    </div>
+    <div class="badge">Concept · v1</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- HERO: balance + parallax shapes -->
+    <div class="card hero" id="hero">
+      <div class="shapes" id="shapes">
+        <div class="shape s1"></div>
+        <div class="shape s2"></div>
+        <div class="shape s3"></div>
+        <div class="shape s4"></div>
+      </div>
+      <div class="hero-top">
+        <h2>Budgeting and Spending Insights</h2>
+        <div class="chev">⌄</div>
+      </div>
+      <div class="hero-bottom">
+        <div class="label">TOTAL BALANCE · **** 8345</div>
+        <div class="amount">€2,412.60</div>
+        <div class="hero-tiles">
+          <div class="hero-tile">This week<b>−€187.40</b></div>
+          <div class="hero-tile">Receipts scanned<b>14</b></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ORBIT: category bubbles sized by spend -->
+    <div class="card orbit-card">
+      <h3>Spend by category</h3>
+      <div class="sub">Bubble size = share of spend. Tap one.</div>
+      <div class="orbit-field" id="orbitField"></div>
+      <div class="orbit-detail" id="orbitDetail">
+        <span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span>
+        <span>—</span>
+      </div>
+    </div>
+
+    <!-- LIST: recent expenses -->
+    <div class="card list-card">
+      <h3>Recent receipts</h3>
+      <div id="expenseList"></div>
+    </div>
+
+  </div>
+
+  <div class="grid" style="margin-top:20px; grid-template-columns: 1fr;">
+    <div class="card">
+      <h3 style="font-family:'Space Grotesk',sans-serif; font-size:16px; margin:0;">Last 7 days</h3>
+      <div class="bars-row" id="barsRow"></div>
+      <div class="bars-labels" id="barsLabels"></div>
+    </div>
+  </div>
+
+  <footer>Colors, bubble sizes and bar heights are placeholder data — swap in live totals from /receipts once wired up.</footer>
+</div>
+
+<script>
+const categories = [
+  { name:"Groceries", amount: 612.40, color: "var(--sage)"  , icon:"🛒" },
+  { name:"Dining",     amount: 284.10, color: "var(--red)"   , icon:"🍽️" },
+  { name:"Delivery",   amount: 96.30,  color: "var(--mustard)", icon:"📦" },
+  { name:"Household",  amount: 143.75, color: "var(--teal)"  , icon:"🏠" },
+  { name:"Transport",  amount: 58.90,  color: "var(--plum)"  , icon:"🚌" },
+  { name:"Other",      amount: 40.15,  color: "#A9A296"      , icon:"✳️" },
+];
+
+const receipts = [
+  { store:"Albert Heijn", cat:"Groceries", amount:54.30 },
+  { store:"Uber Eats",    cat:"Dining",    amount:22.80 },
+  { store:"IKEA",         cat:"Household", amount:78.50 },
+  { store:"NS Reizen",    cat:"Transport", amount:12.40 },
+  { store:"Bol.com",      cat:"Delivery",  amount:31.20 },
+];
+
+const catColor = c => (categories.find(x=>x.name===c) || {}).color || "#A9A296";
+const catIcon  = c => (categories.find(x=>x.name===c) || {}).icon || "•";
+
+/* ---- Render expense list ---- */
+const listEl = document.getElementById("expenseList");
+receipts.forEach(r=>{
+  const row = document.createElement("div");
+  row.className = "expense";
+  row.style.setProperty("--row-color", (catColor(r.cat)+"").startsWith("var") ? "" : "");
+  row.innerHTML = `
+    <div class="icon" style="background:${catColor(r.cat)}22;">${catIcon(r.cat)}</div>
+    <div class="meta">
+      <div class="name">${r.store}</div>
+      <div class="cat">${r.cat}</div>
+    </div>
+    <div class="amt">−€${r.amount.toFixed(2)}</div>
+  `;
+  listEl.appendChild(row);
+});
+
+/* ---- Render orbit bubbles (size scaled by amount) ---- */
+const field = document.getElementById("orbitField");
+const detail = document.getElementById("orbitDetail");
+const total = categories.reduce((s,c)=>s+c.amount,0);
+
+// pre-set positions so bubbles feel hand-placed, not grid-y
+const positions = [
+  {top:'6%', left:'10%'}, {top:'2%', left:'56%'}, {top:'46%', left:'2%'},
+  {top:'40%', left:'62%'}, {top:'70%', left:'34%'}, {top:'66%', left:'75%'}
+];
+
+categories.forEach((c,i)=>{
+  const share = c.amount/total;
+  const size = Math.max(60, Math.round(150*Math.sqrt(share)*1.7));
+  const b = document.createElement('div');
+  b.className = 'bubble' + (size<80 ? ' small':'');
+  b.style.width = size+'px';
+  b.style.height = size+'px';
+  b.style.background = c.color;
+  b.style.top = positions[i].top;
+  b.style.left = positions[i].left;
+  b.innerHTML = `<span class="cat">${c.name}</span><span class="amt">€${c.amount.toFixed(0)}</span>`;
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    detail.innerHTML = `<span><span class="dot" style="background:${c.color}"></span>${c.name}</span><span>€${c.amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
+  });
+  field.appendChild(b);
+});
+
+/* ---- Parallax tilt on hero shapes (pointer + touch) ---- */
+const hero = document.getElementById('hero');
+const shapes = document.querySelectorAll('#shapes .shape');
+function tilt(x,y){
+  const r = hero.getBoundingClientRect();
+  const px = (x - r.left)/r.width - 0.5;
+  const py = (y - r.top)/r.height - 0.5;
+  shapes.forEach((s,i)=>{
+    const depth = (i+1)*10;
+    s.style.transform = `translate(${px*depth}px, ${py*depth}px)`;
+  });
+}
+hero.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+hero.addEventListener('pointerleave', ()=> shapes.forEach(s=> s.style.transform='translate(0,0)'));
+hero.addEventListener('touchmove', e=>{
+  const t = e.touches[0];
+  tilt(t.clientX, t.clientY);
+}, {passive:true});
+
+/* ---- Bars: last 7 days ---- */
+const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const values = [32,68,41,90,54,120,77];
+const maxV = Math.max(...values);
+const barsRow = document.getElementById('barsRow');
+const barsLabels = document.getElementById('barsLabels');
+values.forEach((v,i)=>{
+  const bar = document.createElement('div');
+  bar.className='bar';
+  bar.style.height = (v/maxV*100)+'%';
+  bar.style.animationDelay = (i*0.06)+'s';
+  bar.title = `${days[i]}: €${v}`;
+  bar.addEventListener('mouseenter', ()=> bar.style.background = 'var(--red)');
+  bar.addEventListener('mouseleave', ()=> bar.style.background = 'var(--sage)');
+  barsRow.appendChild(bar);
+  const lbl = document.createElement('span');
+  lbl.textContent = days[i];
+  barsLabels.appendChild(lbl);
+});
+</script>
+</body>
+</html>

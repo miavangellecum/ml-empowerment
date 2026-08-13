@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spend — Receipts</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+
+    <style>
+        /* Note: body.theme-dark, .field/.circle/.c1-c5, .scene, .content,
+           .topbar, .brand, #connect-bank-btn, and .title-block are already
+           defined in css/style.css (shared with index.html) — don't
+           redeclare them here, or this page silently drifts out of sync
+           with the rest of the app. Only page-specific styles below. */
+        .title-block p {
+            color: rgba(244, 237, 226, 0.5);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        /* ── filter row ── */
+        .filter-row {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .filter-row::-webkit-scrollbar {
+            display: none;
+        }
+        .filter-row {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .filter-chip {
+            flex-shrink: 0;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 12.5px;
+            font-weight: 600;
+            padding: 8px 18px;
+            border-radius: 999px;
+            border: 1px solid rgba(244, 237, 226, 0.12);
+            background: rgba(244, 237, 226, 0.04);
+            text-decoration: none;
+            color: rgba(244, 237, 226, 0.6);
+            text-transform: capitalize;
+            transition: background 0.2s, color 0.2s, border-color 0.2s;
+        }
+        .filter-chip:hover {
+            background: rgba(244, 237, 226, 0.10);
+            color: #F4EDE2;
+        }
+        .filter-chip.active {
+            background: #F4EDE2;
+            color: #231F1A;
+            border-color: #F4EDE2;
+        }
+
+        /* ── feed total ── */
+        .feed-total {
+            font-size: 13px;
+            color: rgba(244, 237, 226, 0.45);
+            margin-bottom: 16px;
+        }
+
+        /* ── accordion wrap ── */
+        .accordion-wrap {
+            max-width: 100%;
+            margin: 0 auto;
+        }
+        .accordion-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            position: relative;
+            padding-bottom: 4px;
+        }
+
+        /* ── accordion item ── */
+        .accordion-item {
+            border-radius: 18px;
+            padding: 16px 18px;
+            margin-top: -10px;
+            transition: margin-top 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.3s ease,
+                border-color 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            z-index: 1;
+            border: 1px solid rgba(244, 237, 226, 0.06);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            will-change: transform, margin-top;
+            color: #F4EDE2;
+        }
+        .accordion-item:first-child {
+            margin-top: 0;
+        }
+        .accordion-item:hover:not(.expanded) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+            border-color: rgba(244, 237, 226, 0.15);
+        }
+
+        /* ── 5‑color rotation, using the site's actual palette ── */
+        .accordion-item:nth-child(5n+1) {
+            background: var(--red);
+            box-shadow: 0 4px 20px rgba(232, 73, 45, 0.30);
+        }
+        .accordion-item:nth-child(5n+2) {
+            background: var(--teal);
+            box-shadow: 0 4px 20px rgba(62, 110, 104, 0.30);
+        }
+        .accordion-item:nth-child(5n+3) {
+            background: var(--mustard);
+            color: #231F1A;
+            box-shadow: 0 4px 20px rgba(240, 185, 62, 0.30);
+        }
+        .accordion-item:nth-child(5n+3) .accordion-amount {
+            color: #231F1A;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-sub .accordion-category,
+        .accordion-item:nth-child(5n+3) .accordion-sub .accordion-date {
+            color: rgba(35, 31, 26, 0.6);
+        }
+        .accordion-item:nth-child(5n+3) .accordion-sub .accordion-dot {
+            background: rgba(35, 31, 26, 0.3);
+        }
+        .accordion-item:nth-child(5n+3) .accordion-icon {
+            background: rgba(35, 31, 26, 0.15);
+            color: #231F1A;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-details-inner {
+            border-top-color: rgba(35, 31, 26, 0.15);
+        }
+        .accordion-item:nth-child(5n+3) .detail-row .label {
+            color: rgba(35, 31, 26, 0.5);
+        }
+        .accordion-item:nth-child(5n+3) .detail-row .value {
+            color: #231F1A;
+        }
+        .accordion-item:nth-child(5n+3) .detail-line-item {
+            color: rgba(35, 31, 26, 0.8);
+            border-bottom-color: rgba(35, 31, 26, 0.08);
+        }
+        .accordion-item:nth-child(5n+3) .detail-line-item .price {
+            color: #231F1A;
+        }
+        .accordion-item:nth-child(5n+3) .detail-summary-row {
+            color: rgba(35, 31, 26, 0.6);
+        }
+        .accordion-item:nth-child(5n+3) .detail-summary-row.total {
+            color: #231F1A;
+            border-top-color: rgba(35, 31, 26, 0.15);
+        }
+        .accordion-item:nth-child(5n+3) .empty-detail {
+            color: rgba(35, 31, 26, 0.4);
+        }
+
+        .accordion-item:nth-child(5n+4) {
+            background: var(--plum);
+            box-shadow: 0 4px 20px rgba(122, 75, 92, 0.35);
+        }
+        .accordion-item:nth-child(5n+5) {
+            background: var(--sage);
+            box-shadow: 0 4px 20px rgba(124, 154, 121, 0.35);
+        }
+
+        /* expanded state overrides — keep base but lift */
+        .accordion-item.expanded {
+            margin-top: 0;
+            transform: scale(1.01);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45) !important;
+            z-index: 10;
+            border-radius: 20px;
+            border-color: rgba(244, 237, 226, 0.20);
+        }
+        .accordion-item.expanded~.accordion-item {
+            margin-top: 6px;
+        }
+
+        /* ── row layout ── */
+        .accordion-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .accordion-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            flex-shrink: 0;
+            transition: background 0.3s;
+            color: inherit;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-icon {
+            background: rgba(35, 31, 26, 0.15);
+            color: #231F1A;
+        }
+        .accordion-item.expanded .accordion-icon {
+            background: rgba(255, 255, 255, 0.22);
+        }
+        .accordion-item:nth-child(5n+3).expanded .accordion-icon {
+            background: rgba(35, 31, 26, 0.20);
+        }
+
+        .accordion-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .accordion-name {
+            font-weight: 600;
+            font-size: 15px;
+            letter-spacing: -0.2px;
+            color: inherit;
+            transition: color 0.3s;
+        }
+        .accordion-sub {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 2px;
+            flex-wrap: wrap;
+        }
+        .accordion-category {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.2px;
+            text-transform: capitalize;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-category {
+            color: rgba(35, 31, 26, 0.6);
+        }
+        .accordion-dot {
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            flex-shrink: 0;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-dot {
+            background: rgba(35, 31, 26, 0.3);
+        }
+        .accordion-date {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            font-weight: 400;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-date {
+            color: rgba(35, 31, 26, 0.5);
+        }
+        .accordion-amount {
+            font-weight: 600;
+            font-size: 16px;
+            letter-spacing: -0.2px;
+            flex-shrink: 0;
+            transition: all 0.3s;
+            color: inherit;
+        }
+
+        /* ── details panel ── */
+        .accordion-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.4s ease,
+                padding 0.4s ease;
+            opacity: 0;
+            padding: 0 0 0 54px;
+        }
+        .accordion-item.expanded .accordion-details {
+            max-height: 400px;
+            opacity: 1;
+            padding: 14px 0 4px 54px;
+        }
+        .accordion-details-inner {
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            padding-top: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .accordion-item:nth-child(5n+3) .accordion-details-inner {
+            border-top-color: rgba(35, 31, 26, 0.15);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .detail-row .label {
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 400;
+        }
+        .detail-row .value {
+            color: #F4EDE2;
+            font-weight: 500;
+        }
+        .detail-row .value.highlight {
+            color: #F4EDE2;
+            font-weight: 600;
+        }
+
+        .detail-line-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .detail-line-item:last-child {
+            border-bottom: none;
+        }
+        .detail-line-item .name {
+            font-weight: 400;
+        }
+        .detail-line-item .qty {
+            font-size: 11px;
+            opacity: 0.6;
+            margin-left: 4px;
+        }
+        .detail-line-item .price {
+            font-weight: 600;
+            color: #F4EDE2;
+        }
+
+        .detail-summary-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            padding: 4px 0;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .detail-summary-row.total {
+            color: #F4EDE2;
+            font-weight: 700;
+            font-size: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.10);
+            padding-top: 10px;
+            margin-top: 4px;
+        }
+        .empty-detail {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 13px;
+            padding: 4px 0;
+        }
+
+        /* ── total row (special, non‑clickable) ── */
+        .accordion-item.total {
+            background: rgba(244, 237, 226, 0.06);
+            border: 1px solid rgba(244, 237, 226, 0.08);
+            margin-top: 6px;
+            border-radius: 18px;
+            cursor: default;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.20);
+            padding: 16px 18px;
+            color: #F4EDE2;
+        }
+        .accordion-item.total .accordion-name {
+            color: rgba(244, 237, 226, 0.7);
+            font-weight: 500;
+        }
+        .accordion-item.total .accordion-amount {
+            color: #F4EDE2;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        .accordion-item.total:hover {
+            transform: none;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.20);
+        }
+        .accordion-item.total .accordion-icon {
+            background: rgba(244, 237, 226, 0.08);
+            color: rgba(244, 237, 226, 0.4);
+        }
+        .accordion-item.total .accordion-sub .accordion-category {
+            color: rgba(244, 237, 226, 0.4);
+        }
+        .accordion-item.total .accordion-sub .accordion-dot {
+            background: rgba(244, 237, 226, 0.15);
+        }
+
+        .accordion-item:not(.expanded) .accordion-details {
+            pointer-events: none;
+        }
+
+        /* ── responsive ── */
+        @media (max-width: 600px) {
+            .accordion-item {
+                padding: 14px 14px;
+                border-radius: 16px;
+            }
+            .accordion-item.expanded .accordion-details {
+                padding: 12px 0 2px 46px;
+            }
+            .accordion-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 15px;
+            }
+            .accordion-name {
+                font-size: 14px;
+            }
+            .accordion-amount {
+                font-size: 14px;
+            }
+            .accordion-item.total .accordion-amount {
+                font-size: 16px;
+            }
+            .accordion-item.total {
+                padding: 14px 14px;
+            }
+            .detail-row {
+                font-size: 12px;
+            }
+            .detail-line-item {
+                font-size: 12px;
+            }
+            .detail-summary-row {
+                font-size: 12px;
+            }
+            .detail-summary-row.total {
+                font-size: 13px;
+            }
+        }
+
+        /* ── entrance animation ── */
+        .accordion-item {
+            animation: fadeSlideUp 0.4s ease backwards;
+        }
+        .accordion-item:nth-child(1) {
+            animation-delay: 0.02s;
+        }
+        .accordion-item:nth-child(2) {
+            animation-delay: 0.06s;
+        }
+        .accordion-item:nth-child(3) {
+            animation-delay: 0.10s;
+        }
+        .accordion-item:nth-child(4) {
+            animation-delay: 0.14s;
+        }
+        .accordion-item:nth-child(5) {
+            animation-delay: 0.18s;
+        }
+        .accordion-item:nth-child(6) {
+            animation-delay: 0.22s;
+        }
+        .accordion-item:nth-child(7) {
+            animation-delay: 0.26s;
+        }
+        .accordion-item:nth-child(8) {
+            animation-delay: 0.30s;
+        }
+        .accordion-item:nth-child(9) {
+            animation-delay: 0.34s;
+        }
+        @keyframes fadeSlideUp {
+            0% {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* scrollbar hide */
+        .accordion-list::-webkit-scrollbar {
+            display: none;
+        }
+        .accordion-list {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* ── no receipts state ── */
+        .empty-state {
+            padding: 48px 20px;
+            text-align: center;
+            color: rgba(244, 237, 226, 0.4);
+            font-size: 15px;
+        }
+        .empty-state span {
+            display: block;
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+
+<body class="theme-dark">
+
+    <!-- ── floating circles – matches index.html exactly ── -->
+    <div class="field" id="field">
+        <div class="circle c1"></div>
+        <div class="circle c2"></div>
+        <div class="circle c3"></div>
+        <div class="circle c4"></div>
+        <div class="circle c5"></div>
+    </div>
+
+    <!-- ── main scene ── -->
+    <div class="scene">
+        <div class="content">
+
+            <!-- topbar -->
+            <div class="topbar">
+                <div class="brand">◐ Spend</div>
+            </div>
+
+            <!-- title -->
+            <div class="title-block">
+                <h1>My Receipts</h1>
+                <p>Tap any receipt to expand and see details.</p>
+            </div>
+
+            <!-- filter + total -->
+            <div class="filter-row" id="filterRow"></div>
+            <div class="feed-total" id="feedTotal"></div>
+
+            <!-- accordion list -->
+            <div class="accordion-wrap">
+                <div class="accordion-list" id="accordionList"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── bottom nav (actionbar) ── -->
+    <nav class="actionbar">
+        <a href="receipts.html" class="active">My Receipts</a>
+        <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+        <a href="index.html">Dashboard</a>
+    </nav>
+
+    <!-- ── scripts ── -->
+    <script src="js/data.js"></script>
+    <script>
+        (async function() {
+            // ── pointer tilt for circles – same as dashboard ──
+            const circles = document.querySelectorAll('.circle');
+
+            function tilt(x, y) {
+                const px = x / window.innerWidth - 0.5;
+                const py = y / window.innerHeight - 0.5;
+                circles.forEach((c, i) => {
+                    const depth = (i + 1) * 14;
+                    c.style.transform = `translate(${px * depth}px, ${py * depth}px)`;
+                });
+            }
+            window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+            window.addEventListener('touchmove', e => {
+                const t = e.touches[0];
+                if (t) tilt(t.clientX, t.clientY);
+            }, { passive: true });
+
+            // ── data ──
+            const allReceipts = await fetchReceipts();
+            const params = new URLSearchParams(location.search);
+            const activeCat = params.get('cat');
+
+            // ── filters ──
+            const cats = ['all', ...new Set(allReceipts.map(r => r.category))];
+            const filterRow = document.getElementById('filterRow');
+            cats.forEach(c => {
+                const a = document.createElement('a');
+                a.textContent = c;
+                a.className = 'filter-chip' + ((activeCat === c) || (!activeCat && c === 'all') ? ' active' :
+                    '');
+                a.href = c === 'all' ? 'receipts.html' : `receipts.html?cat=${c}`;
+                filterRow.appendChild(a);
+            });
+
+            const filtered = activeCat ? allReceipts.filter(r => r.category === activeCat) : allReceipts;
+
+            // ── total ──
+            const totalEl = document.getElementById('feedTotal');
+            const sum = filtered.reduce((s, r) => s + r.total, 0);
+            totalEl.textContent =
+                `${filtered.length} receipt${filtered.length !== 1 ? 's' : ''} · −€${sum.toFixed(2)}`;
+
+            const listEl = document.getElementById('accordionList');
+
+            if (filtered.length === 0) {
+                listEl.innerHTML =
+                    `<div class="empty-state"><span>📭</span>No receipts in this category.</div>`;
+                return;
+            }
+
+            // ── helpers ──
+            function formatDate(d) {
+                if (!d) return '';
+                const dt = new Date(d);
+                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+
+            function buildReceiptDetails(r) {
+                let html = '';
+                const items = r.items || [];
+                if (items.length > 0) {
+                    items.forEach(it => {
+                        const qty = it.quantity || 1;
+                        const price = Number(it.total_price ?? it.unit_price ?? 0);
+                        html += `
+                            <div class="detail-line-item">
+                                <span class="name">${it.name}${qty > 1 ? `<span class="qty">×${qty}</span>` : ''}</span>
+                                <span class="price">€${price.toFixed(2)}</span>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += `<div class="empty-detail">No line items available.</div>`;
+                }
+                if (r.subtotal != null) {
+                    html += `
+                        <div class="detail-summary-row">
+                            <span>Subtotal</span>
+                            <span>€${r.subtotal.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                if (r.tax != null) {
+                    html += `
+                        <div class="detail-summary-row">
+                            <span>Tax</span>
+                            <span>€${r.tax.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+                html += `
+                    <div class="detail-summary-row total">
+                        <span>Total</span>
+                        <span>€${r.total.toFixed(2)}</span>
+                    </div>
+                `;
+                if (r.payment_method) {
+                    html += `
+                        <div class="detail-row">
+                            <span class="label">Payment</span>
+                            <span class="value highlight">${r.payment_method}</span>
+                        </div>
+                    `;
+                }
+                if (r.date) {
+                    html += `
+                        <div class="detail-row">
+                            <span class="label">Date</span>
+                            <span class="value">${formatDate(r.date)}</span>
+                        </div>
+                    `;
+                }
+                return html;
+            }
+
+            // ── build items ──
+            const fragment = document.createDocumentFragment();
+            let totalSum = 0;
+
+            filtered.forEach((r, index) => {
+                const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
+                totalSum += r.total;
+
+                const item = document.createElement('div');
+                item.className = 'accordion-item';
+                item.dataset.index = index;
+
+                const iconContent = meta.icon || '•';
+                const catDisplay = r.category || 'other';
+                const nameDisplay = r.store_name || 'Unknown';
+                const dateDisplay = r.date ? formatDate(r.date) : '';
+
+                item.innerHTML = `
+                    <div class="accordion-row">
+                        <div class="accordion-icon">${iconContent}</div>
+                        <div class="accordion-info">
+                            <div class="accordion-name">${nameDisplay}</div>
+                            <div class="accordion-sub">
+                                <span class="accordion-category">${catDisplay}</span>
+                                ${dateDisplay ? `<span class="accordion-dot"></span><span class="accordion-date">${dateDisplay}</span>` : ''}
+                            </div>
+                        </div>
+                        <span class="accordion-amount">−€${r.total.toFixed(2)}</span>
+                    </div>
+                    <div class="accordion-details">
+                        <div class="accordion-details-inner">
+                            ${buildReceiptDetails(r)}
+                        </div>
+                    </div>
+                `;
+                fragment.appendChild(item);
+            });
+
+            // ── total row ──
+            const totalItem = document.createElement('div');
+            totalItem.className = 'accordion-item total';
+            totalItem.innerHTML = `
+                <div class="accordion-row">
+                    <div class="accordion-icon">📊</div>
+                    <div class="accordion-info">
+                        <div class="accordion-name">Total (${filtered.length} receipts)</div>
+                        <div class="accordion-sub">
+                            <span class="accordion-category">All time</span>
+                        </div>
+                    </div>
+                    <span class="accordion-amount">−€${totalSum.toFixed(2)}</span>
+                </div>
+            `;
+            fragment.appendChild(totalItem);
+            listEl.appendChild(fragment);
+
+            // ── accordion logic ──
+            const items = listEl.querySelectorAll('.accordion-item:not(.total)');
+
+            function resetSiblingMargins(expandedItem) {
+                const siblings = expandedItem.parentElement.children;
+                for (let child of siblings) {
+                    if (child !== expandedItem && !child.classList.contains('total')) {
+                        if (child.previousElementSibling) {
+                            child.style.marginTop = '';
+                        }
+                    }
+                }
+            }
+
+            function updateSiblingMargins(expandedItem) {
+                const siblings = expandedItem.parentElement.children;
+                let foundExpanded = false;
+                for (let child of siblings) {
+                    if (child === expandedItem) {
+                        foundExpanded = true;
+                        continue;
+                    }
+                    if (foundExpanded && !child.classList.contains('total')) {
+                        if (child.previousElementSibling) {
+                            child.style.marginTop = '6px';
+                        }
+                    } else if (!foundExpanded && !child.classList.contains('total')) {
+                        if (child.previousElementSibling) {
+                            child.style.marginTop = '-10px';
+                        }
+                    }
+                }
+                const total = listEl.querySelector('.accordion-item.total');
+                if (total) {
+                    total.style.marginTop = '6px';
+                }
+            }
+
+            items.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    if (this.classList.contains('expanded')) {
+                        this.classList.remove('expanded');
+                        resetSiblingMargins(this);
+                        return;
+                    }
+                    const anyExpanded = listEl.querySelector('.accordion-item.expanded');
+                    if (anyExpanded) {
+                        anyExpanded.classList.remove('expanded');
+                        resetSiblingMargins(anyExpanded);
+                    }
+                    this.classList.add('expanded');
+                    updateSiblingMargins(this);
+                });
+            });
+
+            // ── init margins ──
+            const children = listEl.children;
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                if (i === 0) {
+                    child.style.marginTop = '0';
+                } else if (!child.classList.contains('total')) {
+                    child.style.marginTop = '-10px';
+                } else {
+                    child.style.marginTop = '6px';
+                }
+            }
+            const totalRow = listEl.querySelector('.accordion-item.total');
+            if (totalRow) {
+                totalRow.style.marginTop = '6px';
+            }
+
+        })();
+    </script>
+
+</body>
+</html>

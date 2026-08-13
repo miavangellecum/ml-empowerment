@@ -160,3 +160,79 @@ connectBankBtn.addEventListener("click", async () => {
     console.error("Could not preload transactions:", err);
   }
 })();
+
+
+(async function(){
+  const receipts = await fetchReceipts();
+  const activity = await fetchRecentActivity();
+  const missing = activity.filter(a => a.no_receipt);
+
+  document.getElementById('receiptCount').textContent = receipts.length;
+  document.getElementById('missingCount').textContent = missing.length;
+  const weekTotal = activity.reduce((s,a)=>s+a.total,0);
+  document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+
+  const totals = {};
+  receipts.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
+  const grand = Object.values(totals).reduce((a,b)=>a+b,0);
+
+  const field = document.getElementById('orbitField');
+  const detail = document.getElementById('orbitDetail');
+  const positions = [
+    {top:'2%', left:'6%'}, {top:'0%', left:'52%'}, {top:'44%', left:'0%'},
+    {top:'38%', left:'58%'}, {top:'66%', left:'30%'}, {top:'60%', left:'74%'}
+  ];
+  Object.entries(totals).forEach(([cat, amount], i)=>{
+    const meta = CATEGORY_META[cat] || CATEGORY_META.other;
+    const share = amount/grand;
+    const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
+    const b = document.createElement('a');
+    b.href = `/receipts.html?cat=${cat}`;
+    b.className = 'bubble' + (size<78 ? ' small':'');
+    b.style.width = size+'px'; b.style.height = size+'px';
+    b.style.background = meta.color;
+    const pos = positions[i % positions.length];
+    b.style.top = pos.top; b.style.left = pos.left;
+    b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
+    });
+    field.appendChild(b);
+  });
+
+  const listEl = document.getElementById('activityList');
+  activity.slice(0,6).forEach(r=>{
+    const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
+    const a = document.createElement(r.no_receipt ? 'div' : 'a');
+    a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
+    if(!r.no_receipt) a.href = `/receipt.html?id=${r.id}`;
+    a.innerHTML = `
+      <div class="icon">${r.no_receipt ? '⚠️' : meta.icon}</div>
+      <div class="meta">
+        <div class="name">${r.store_name}</div>
+        <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
+      </div>
+      <div class="amt">−€${r.total.toFixed(2)}</div>`;
+    listEl.appendChild(a);
+  });
+
+  const circles = document.querySelectorAll('.circle');
+  function tilt(x,y){
+    const px = x/window.innerWidth - 0.5;
+    const py = y/window.innerHeight - 0.5;
+    circles.forEach((c,i)=>{
+      const depth = (i+1)*14;
+      c.style.transform = `translate(${px*depth}px, ${py*depth}px)`;
+    });
+  }
+  window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+  window.addEventListener('touchmove', e=>{ const t=e.touches[0]; tilt(t.clientX,t.clientY); }, {passive:true});
+
+  document.getElementById('connectBankBtn').addEventListener('click', (e)=>{
+    e.preventDefault();
+    alert('This would open Plaid Link to connect another bank account.');
+  });
+})();

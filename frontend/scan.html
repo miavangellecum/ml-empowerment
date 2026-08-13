@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spend — Scan</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+        /* ── dark scene ── */
+        .scan-scene {
+            position: relative;
+            min-height: 100vh;
+            padding: 28px 20px 130px;
+            background: #231F1A;
+            color: #F4EDE2;
+            overflow: hidden;
+        }
+
+        /* ── floating orbs container ── */
+        .scan-orbs {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .scan-orbs .orb {
+            position: absolute;
+            border-radius: 50%;
+            will-change: transform;
+            transition: transform 0.08s ease-out;
+            backface-visibility: hidden;
+        }
+
+        /* ── NEW ARRANGEMENT (different from dashboard) ── */
+        .scan-orbs .o1 {
+            width: 480px;
+            height: 480px;
+            background: #E8492D;
+            top: -120px;
+            right: -80px;
+            opacity: 0.9;
+        }
+        .scan-orbs .o2 {
+            width: 320px;
+            height: 320px;
+            background: #F0B93E;
+            bottom: 8%;
+            left: -100px;
+            opacity: 0.85;
+        }
+        .scan-orbs .o3 {
+            width: 220px;
+            height: 220px;
+            background: #7C9A79;
+            top: 22%;
+            right: 18%;
+            opacity: 0.8;
+        }
+        .scan-orbs .o4 {
+            width: 160px;
+            height: 160px;
+            border: 3px solid rgba(244, 237, 226, 0.2);
+            top: 8%;
+            left: 12%;
+            opacity: 0.7;
+        }
+        .scan-orbs .o5 {
+            width: 140px;
+            height: 140px;
+            background: #3E6E68;
+            bottom: 32%;
+            right: 6%;
+            opacity: 0.85;
+        }
+        .scan-orbs .o6 {
+            width: 80px;
+            height: 80px;
+            border: 2px solid rgba(244, 237, 226, 0.25);
+            top: 44%;
+            left: 6%;
+            opacity: 0.6;
+        }
+        .scan-orbs .o7 {
+            width: 100px;
+            height: 100px;
+            background: #7A4B5C;
+            bottom: 48%;
+            left: 32%;
+            opacity: 0.8;
+        }
+
+        /* ── content layer ── */
+        .scan-content {
+            position: relative;
+            z-index: 2;
+            max-width: 540px;
+            margin: 0 auto;
+        }
+
+        /* header */
+        .scan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .scan-header h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: clamp(26px, 4vw, 36px);
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+        .scan-header .sub {
+            font-size: 13px;
+            color: rgba(244, 237, 226, 0.5);
+            margin-top: 4px;
+        }
+        .scan-header .badge-scan {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            background: rgba(244, 237, 226, 0.08);
+            border: 1px solid rgba(244, 237, 226, 0.12);
+            color: rgba(244, 237, 226, 0.6);
+            padding: 6px 16px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+
+        /* drop zone */
+        .scan-drop {
+            border: 2px dashed rgba(244, 237, 226, 0.15);
+            border-radius: 28px;
+            padding: 48px 24px 44px;
+            text-align: center;
+            background: rgba(35, 31, 26, 0.55);
+            backdrop-filter: blur(10px);
+            transition: border-color 0.3s ease, background 0.3s ease, transform 0.2s ease;
+            cursor: pointer;
+        }
+        .scan-drop:hover {
+            border-color: #E8492D;
+            background: rgba(35, 31, 26, 0.7);
+            transform: scale(1.005);
+        }
+        .scan-drop .drop-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 20px;
+            margin: 0 0 4px;
+            color: #F4EDE2;
+        }
+        .scan-drop .drop-sub {
+            font-size: 14px;
+            color: rgba(244, 237, 226, 0.5);
+            margin: 0 0 22px;
+        }
+        .scan-drop input[type="file"] {
+            display: none;
+        }
+        .scan-drop .btn-upload {
+            display: inline-block;
+            background: #E8492D;
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 13px;
+            padding: 12px 32px;
+            border-radius: 999px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+            box-shadow: 0 8px 20px rgba(232, 73, 45, 0.35);
+        }
+        .scan-drop .btn-upload:hover {
+            background: #d63d22;
+            transform: scale(1.02);
+            box-shadow: 0 10px 28px rgba(232, 73, 45, 0.45);
+        }
+        .scan-drop .btn-upload:active {
+            transform: scale(0.97);
+        }
+
+        #fileName {
+            margin-top: 14px;
+            font-size: 13px;
+            color: rgba(244, 237, 226, 0.4);
+            min-height: 20px;
+        }
+
+        #scanStatus {
+            margin-top: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            min-height: 24px;
+        }
+        #scanStatus.loading {
+            color: #F0B93E;
+        }
+        #scanStatus.success {
+            color: #7C9A79;
+        }
+        #scanStatus.error {
+            color: #E8492D;
+        }
+
+        .scan-formats {
+            margin-top: 14px;
+            font-size: 12px;
+            color: rgba(244, 237, 226, 0.3);
+            letter-spacing: 0.02em;
+        }
+        .scan-formats span {
+            display: inline-block;
+            background: rgba(244, 237, 226, 0.06);
+            padding: 2px 12px;
+            border-radius: 999px;
+            margin: 0 4px 4px 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* ── bottom tab bar ── */
+        .tabbar-dark {
+            position: fixed;
+            left: 50%;
+            bottom: 20px;
+            transform: translateX(-50%);
+            background: rgba(35, 31, 26, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(244, 237, 226, 0.08);
+            border-radius: 999px;
+            padding: 6px;
+            display: flex;
+            gap: 4px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.50);
+            z-index: 50;
+        }
+        .tabbar-dark a {
+            text-decoration: none;
+            color: rgba(244, 237, 226, 0.5);
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 12.5px;
+            padding: 10px 18px;
+            border-radius: 999px;
+            transition: all 0.2s ease;
+        }
+        .tabbar-dark a:hover {
+            color: #F4EDE2;
+            background: rgba(244, 237, 226, 0.06);
+        }
+        .tabbar-dark a.active {
+            background: #E8492D;
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(232, 73, 45, 0.40);
+        }
+        .tabbar-dark a.scan-active {
+            background: #E8492D;
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(232, 73, 45, 0.40);
+        }
+
+        /* ── responsive ── */
+        @media (max-width: 480px) {
+            .scan-scene {
+                padding: 20px 16px 120px;
+            }
+            .scan-drop {
+                padding: 32px 16px 28px;
+            }
+            .scan-drop .drop-title {
+                font-size: 17px;
+            }
+            .scan-header h1 {
+                font-size: 24px;
+            }
+            .tabbar-dark a {
+                font-size: 11px;
+                padding: 8px 12px;
+            }
+            .scan-orbs .o1 {
+                width: 320px;
+                height: 320px;
+                top: -80px;
+                right: -60px;
+            }
+            .scan-orbs .o2 {
+                width: 220px;
+                height: 220px;
+                bottom: 4%;
+                left: -60px;
+            }
+            .scan-orbs .o3 {
+                width: 150px;
+                height: 150px;
+                top: 18%;
+                right: 10%;
+            }
+            .scan-orbs .o4 {
+                width: 110px;
+                height: 110px;
+                top: 4%;
+                left: 4%;
+            }
+            .scan-orbs .o5 {
+                width: 100px;
+                height: 100px;
+                bottom: 28%;
+                right: 2%;
+            }
+            .scan-orbs .o6 {
+                width: 60px;
+                height: 60px;
+                top: 40%;
+                left: 2%;
+            }
+            .scan-orbs .o7 {
+                width: 70px;
+                height: 70px;
+                bottom: 44%;
+                left: 28%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ─── DARK SCENE WITH FLOATING ORBS (NEW ARRANGEMENT) ─── -->
+    <div class="scan-scene" id="scanScene">
+        <!-- floating orbs — completely rearranged from dashboard -->
+        <div class="scan-orbs" id="orbContainer">
+            <div class="orb o1"></div>
+            <div class="orb o2"></div>
+            <div class="orb o3"></div>
+            <div class="orb o4"></div>
+            <div class="orb o5"></div>
+            <div class="orb o6"></div>
+            <div class="orb o7"></div>
+        </div>
+
+        <!-- ─── CONTENT ─── -->
+        <div class="scan-content">
+            <!-- header -->
+            <div class="scan-header">
+                <div>
+                    <h1>Scan receipt</h1>
+                    <div class="sub">Upload a photo or PDF — OCR + LLM parsing happens server-side.</div>
+                </div>
+            </div>
+
+            <!-- drop zone -->
+            <div class="scan-drop" id="dropZone">
+                <div class="drop-title">Drop your receipt here</div>
+                <div class="drop-sub">or click to browse files</div>
+
+                <input type="file" id="fileInput" accept="image/*,application/pdf" />
+                <label for="fileInput" class="btn-upload" id="uploadLabel">Choose file</label>
+
+                <div id="fileName"></div>
+                <div id="scanStatus"></div>
+
+                <div class="scan-formats">
+                    <span>JPEG</span>
+                    <span>PNG</span>
+                    <span>PDF</span>
+                    <span>HEIC</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── BOTTOM TAB BAR ─── -->
+        <nav class="tabbar-dark">
+            <a href="receipts.html">Receipts</a>
+            <a href="scan.html" class="scan-active">Scan</a>
+            <a href="index.html">Dashboard</a>
+        </nav>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script>
+        (function() {
+            const fileInput = document.getElementById('fileInput');
+            const fileName = document.getElementById('fileName');
+            const statusEl = document.getElementById('scanStatus');
+            const dropZone = document.getElementById('dropZone');
+
+            // ── orb mouse‑following parallax ──
+            const orbs = document.querySelectorAll('.orb');
+            const scene = document.getElementById('scanScene');
+            let mouseX = 0.5;
+            let mouseY = 0.5;
+
+            function updateOrbs() {
+                const centerX = mouseX - 0.5;
+                const centerY = mouseY - 0.5;
+                orbs.forEach((orb, i) => {
+                    const depth = (i + 1) * 6;
+                    const x = centerX * depth;
+                    const y = centerY * depth;
+                    orb.style.transform = `translate(${x}px, ${y}px)`;
+                });
+            }
+
+            scene.addEventListener('pointermove', function(e) {
+                const rect = scene.getBoundingClientRect();
+                mouseX = (e.clientX - rect.left) / rect.width;
+                mouseY = (e.clientY - rect.top) / rect.height;
+                // clamp
+                mouseX = Math.max(0, Math.min(1, mouseX));
+                mouseY = Math.max(0, Math.min(1, mouseY));
+                updateOrbs();
+            });
+
+            scene.addEventListener('pointerleave', function() {
+                orbs.forEach(orb => {
+                    orb.style.transform = 'translate(0, 0)';
+                });
+            });
+
+            // touch support
+            scene.addEventListener('touchmove', function(e) {
+                const t = e.touches[0];
+                if (!t) return;
+                const rect = scene.getBoundingClientRect();
+                mouseX = (t.clientX - rect.left) / rect.width;
+                mouseY = (t.clientY - rect.top) / rect.height;
+                mouseX = Math.max(0, Math.min(1, mouseX));
+                mouseY = Math.max(0, Math.min(1, mouseY));
+                updateOrbs();
+            }, { passive: true });
+
+            scene.addEventListener('touchend', function() {
+                orbs.forEach(orb => {
+                    orb.style.transform = 'translate(0, 0)';
+                });
+            }, { passive: true });
+
+            // ── file upload logic ──
+
+            function setStatus(msg, type) {
+                statusEl.textContent = msg;
+                statusEl.className = type || '';
+            }
+
+            dropZone.addEventListener('click', function(e) {
+                if (e.target.closest('#uploadLabel')) return;
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', async function(e) {
+                const f = e.target.files[0];
+                if (!f) return;
+
+                fileName.textContent = 'Selected: ' + f.name;
+
+                const formData = new FormData();
+                formData.append('file', f);
+
+                setStatus('Processing (OCR + LLM)… this may take a moment.', 'loading');
+
+                try {
+                    const res = await fetch('/extract', { method: 'POST', body: formData });
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error('Server responded ' + res.status + ': ' + text);
+                    }
+                    const data = await res.json();
+                    setStatus('Saved: ' + data.data.store_name + ' — €' + data.data.total.toFixed(2), 'success');
+                    setTimeout(function() {
+                        location.href = 'receipt.html?id=' + data.receipt_id;
+                    }, 1200);
+                } catch (err) {
+                    console.error(err);
+                    setStatus('Error: ' + err.message, 'error');
+                }
+            });
+
+            // drag & drop
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                dropZone.style.borderColor = '#E8492D';
+                dropZone.style.background = 'rgba(35, 31, 26, 0.75)';
+            });
+
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                dropZone.style.borderColor = 'rgba(244, 237, 226, 0.15)';
+                dropZone.style.background = 'rgba(35, 31, 26, 0.55)';
+            });
+
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                dropZone.style.borderColor = 'rgba(244, 237, 226, 0.15)';
+                dropZone.style.background = 'rgba(35, 31, 26, 0.55)';
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    fileInput.dispatchEvent(new Event('change'));
+                }
+            });
+        })();
+    </script>
+
+</body>
+</html>

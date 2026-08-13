@@ -1,47 +1,146 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Receipt Extractor</title>
-  <link rel="stylesheet" href="css/style.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spend — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
-<body>
-  <main class="card">
-    <h1>Receipt Extractor</h1>
-    <p class="subtitle">Upload a receipt (image or PDF) and extract structured data via OCR + LLM.</p>
+<body class="theme-dark">
 
-    <form id="upload-form">
-      <input type="file" id="file-input" accept="image/*,.pdf" required />
-      <button type="submit" id="submit-btn">Extract</button>
-    </form>
+<div class="field" id="field">
+  <div class="circle c1"></div>
+  <div class="circle c2"></div>
+  <div class="circle c3"></div>
+  <div class="circle c4"></div>
+  <div class="circle c5"></div>
+  <div class="circle c6"></div>
+  <div class="circle c7"></div>
+</div>
 
-    <div id="status"></div>
+<div class="scene">
+  <div class="content">
 
-    <pre id="result"></pre>
+    <div class="topbar">
+      <div class="brand">◐ Spend</div>
+      <button id="connect-bank-btn">🏦 Connect bank</button>
+    </div>
 
-    <hr />
+    <div class="title-block">
+      <h1>Budgeting and<br>Spending Insights</h1>
+    </div>
 
-    <h2>Bank Transactions</h2>
-    <p class="subtitle">Connect a bank account via Plaid to pull in transactions.</p>
+    <div class="balance-label">TOTAL BALANCE · **** 8345</div>
+    <div class="balance-amount">€2,412.60</div>
+    <div class="balance-tiles">
+      <div class="balance-tile">This week<b id="weekSpend">—</b></div>
+      <div class="balance-tile">Receipts scanned<b id="receiptCount">—</b></div>
+      <div class="balance-tile">Missing receipts<b id="missingCount">—</b></div>
+    </div>
 
-    <button id="connect-bank-btn">Connect a bank</button>
-    <div id="plaid-status"></div>
+    <div class="panel">
+      <h3>Spend by category</h3>
+      <div class="sub">Bubble size = share of spend. Tap one.</div>
+      <div class="orbit-field" id="orbitField"></div>
+      <div class="orbit-detail" id="orbitDetail"><span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span></div>
+    </div>
 
-    <table id="transactions-table" class="hidden">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Name</th>
-          <th>Amount</th>
-          <th>Category</th>
-        </tr>
-      </thead>
-      <tbody id="transactions-body"></tbody>
-    </table>
-  </main>
+    <div class="panel">
+      <h3>Recent activity</h3>
+      <div class="sub">Dashed red rows are bank transactions with no receipt attached yet.</div>
+      <div id="activityList"></div>
+    </div>
 
-  <!-- Plaid Link SDK -->
-  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-  <script src="js/index.js"></script>
+  </div>
+</div>
+
+<nav class="actionbar">
+  <a href="receipts.html">My Receipts</a>
+  <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+  <a href="index.html" class="active">Dashboard</a>
+</nav>
+
+<script src="js/data.js"></script>
+<script>
+(async function(){
+  const receipts = await fetchReceipts();
+  const activity = await fetchRecentActivity();
+  const missing = activity.filter(a => a.no_receipt);
+
+  document.getElementById('receiptCount').textContent = receipts.length;
+  document.getElementById('missingCount').textContent = missing.length;
+  const weekTotal = activity.reduce((s,a)=>s+a.total,0);
+  document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+
+  const totals = {};
+  receipts.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
+  const grand = Object.values(totals).reduce((a,b)=>a+b,0);
+
+  const field = document.getElementById('orbitField');
+  const detail = document.getElementById('orbitDetail');
+  const positions = [
+    {top:'2%', left:'6%'}, {top:'0%', left:'52%'}, {top:'44%', left:'0%'},
+    {top:'38%', left:'58%'}, {top:'66%', left:'30%'}, {top:'60%', left:'74%'}
+  ];
+  Object.entries(totals).forEach(([cat, amount], i)=>{
+    const meta = CATEGORY_META[cat] || CATEGORY_META.other;
+    const share = grand ? amount/grand : 0;
+    const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
+    const b = document.createElement('a');
+    b.href = `receipts.html?cat=${cat}`;
+    b.className = 'bubble' + (size<78 ? ' small':'');
+    b.style.width = size+'px'; b.style.height = size+'px';
+    b.style.background = meta.color;
+    const pos = positions[i % positions.length];
+    b.style.top = pos.top; b.style.left = pos.left;
+    b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
+    });
+    field.appendChild(b);
+  });
+
+  const listEl = document.getElementById('activityList');
+  activity.slice(0,6).forEach(r=>{
+    const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
+    const a = document.createElement(r.no_receipt ? 'div' : 'a');
+    a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
+    if(!r.no_receipt) a.href = `receipt.html?id=${r.id}`;
+    a.innerHTML = `
+      <div class="icon">${r.no_receipt ? '⚠️' : meta.icon}</div>
+      <div class="meta">
+        <div class="name">${r.store_name}</div>
+        <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
+      </div>
+      <div class="amt">−€${r.total.toFixed(2)}</div>`;
+    listEl.appendChild(a);
+  });
+
+  const circles = document.querySelectorAll('.circle');
+  function tilt(x,y){
+    const px = x/window.innerWidth - 0.5;
+    const py = y/window.innerHeight - 0.5;
+    circles.forEach((c,i)=>{
+      const depth = (i+1)*14;
+      c.style.transform = `translate(${px*depth}px, ${py*depth}px)`;
+    });
+  }
+  window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+  window.addEventListener('touchmove', e=>{ const t=e.touches[0]; tilt(t.clientX,t.clientY); }, {passive:true});
+
+  // Connect-bank button — same id everywhere, wired once via data.js.
+  wireConnectBank('connect-bank-btn', {
+    onConnected: async () => {
+      setTimeout(() => location.reload(), 900);
+    }
+  });
+})();
+</script>
 </body>
 </html>
