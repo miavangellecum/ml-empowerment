@@ -179,7 +179,6 @@ function wireConnectBank(buttonId, { onConnected } = {}) {
         onSuccess: async (publicToken, metadata) => {
           btn.textContent = "Syncing…";
           try {
-            const { item_id } = await plaidExchangePublicToken(publicToken, metadata.institution?.name);
             btn.textContent = `Connected ${metadata.institution?.name || "bank"}`;
             if (onConnected) await onConnected(item_id);
           } catch (err) {
