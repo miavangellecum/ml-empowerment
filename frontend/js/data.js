@@ -239,6 +239,24 @@ function closeBanksModal() {
   if (modal) modal.classList.remove("open");
 }
 
+// Deterministic colored initials "logo" for a bank, since we don't have
+// a real institution-logo API wired up — same name always gets the same
+// color/initials so it still reads as an identity at a glance.
+function bankAvatar(name) {
+  const label = (name || 'Bank').trim();
+  const initials = label
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase() || 'B';
+  const palette = ['#E8492D', '#3E6E68', '#F0B93E', '#7A4B5C', '#7C9A79', '#5B7DB1'];
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  const color = palette[hash % palette.length];
+  return `<div class="bank-avatar" style="background:${color}">${initials}</div>`;
+}
+
 async function renderBanksModalList() {
   const listEl = document.getElementById("banksModalList");
   listEl.innerHTML = `<div class="banks-modal-empty">Loading…</div>`;
@@ -256,7 +274,7 @@ async function renderBanksModalList() {
     const row = document.createElement("div");
     row.className = "banks-modal-row";
     row.innerHTML = `
-      <div class="banks-modal-row-icon">🏦</div>
+      <div class="banks-modal-row-icon">${bankAvatar(bank.institution_name)}</div>
       <div class="banks-modal-row-meta">
         <div class="banks-modal-row-name">${bank.institution_name || "Connected bank"}</div>
         <div class="banks-modal-row-sub">${mask ? mask + " · " : ""}${balanceLabel}</div>

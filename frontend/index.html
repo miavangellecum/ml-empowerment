@@ -67,47 +67,45 @@
 <script src="js/data.js"></script>
 <script>
 let activeBankItemId = null; // null = "All banks"
+const ORBIT_POSITIONS = [
+  {top:'2%', left:'6%'}, {top:'0%', left:'52%'}, {top:'44%', left:'0%'},
+  {top:'38%', left:'58%'}, {top:'66%', left:'30%'}, {top:'60%', left:'74%'}
+];
 
-async function renderBalance() {
-  const accounts = await fetchAccounts();
-  const labelEl = document.getElementById('balanceLabel');
-  const amountEl = document.getElementById('balanceAmount');
+function renderBankChips(byBank) {
   const chipRow = document.getElementById('bankFilterRow');
   chipRow.innerHTML = '';
+  const bankIds = Object.keys(byBank);
+  if (bankIds.length <= 1) return;
 
-  if (!accounts.length) {
+  const allChip = document.createElement('button');
+  allChip.type = 'button';
+  allChip.className = 'bank-filter-chip' + (activeBankItemId === null ? ' active' : '');
+  allChip.textContent = 'All banks';
+  allChip.addEventListener('click', () => { activeBankItemId = null; refreshDashboard(); });
+  chipRow.appendChild(allChip);
+
+  bankIds.forEach(itemId => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'bank-filter-chip' + (activeBankItemId === itemId ? ' active' : '');
+    chip.textContent = byBank[itemId].name;
+    chip.addEventListener('click', () => { activeBankItemId = itemId; refreshDashboard(); });
+    chipRow.appendChild(chip);
+  });
+}
+
+function renderBalanceCard(byBank, allAccounts) {
+  const labelEl = document.getElementById('balanceLabel');
+  const amountEl = document.getElementById('balanceAmount');
+
+  if (!allAccounts.length) {
     labelEl.textContent = 'TOTAL BALANCE · No bank connected';
     amountEl.textContent = '€0.00';
     return;
   }
 
-  // group accounts by bank so multiple linked banks are distinguishable
-  const byBank = {};
-  accounts.forEach(a => {
-    if (!byBank[a.item_id]) byBank[a.item_id] = { name: a.institution_name || 'Bank', accounts: [] };
-    byBank[a.item_id].accounts.push(a);
-  });
-  const bankIds = Object.keys(byBank);
-
-  if (bankIds.length > 1) {
-    const allChip = document.createElement('button');
-    allChip.type = 'button';
-    allChip.className = 'bank-filter-chip' + (activeBankItemId === null ? ' active' : '');
-    allChip.textContent = 'All banks';
-    allChip.addEventListener('click', () => { activeBankItemId = null; renderBalance(); renderActivity(); });
-    chipRow.appendChild(allChip);
-
-    bankIds.forEach(itemId => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'bank-filter-chip' + (activeBankItemId === itemId ? ' active' : '');
-      chip.textContent = byBank[itemId].name;
-      chip.addEventListener('click', () => { activeBankItemId = itemId; renderBalance(); renderActivity(); });
-      chipRow.appendChild(chip);
-    });
-  }
-
-  const visibleAccounts = activeBankItemId ? (byBank[activeBankItemId]?.accounts || []) : accounts;
+  const visibleAccounts = activeBankItemId ? (byBank[activeBankItemId]?.accounts || []) : allAccounts;
   const total = visibleAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
   const currency = visibleAccounts[0]?.iso_currency_code === 'USD' ? '$' : '€';
   const mask = visibleAccounts[0]?.mask ? `**** ${visibleAccounts[0].mask}` : `${visibleAccounts.length} account${visibleAccounts.length===1?'':'s'}`;
@@ -119,15 +117,46 @@ async function renderBalance() {
   amountEl.textContent = currency + total.toFixed(2);
 }
 
-async function renderActivity() {
-  const activity = await fetchRecentActivity();
-  const visible = activeBankItemId
-    ? activity.filter(a => !a.item_id || a.item_id === activeBankItemId)
-    : activity;
+function renderOrbit(visibleActivity) {
+  const totals = {};
+  visibleActivity.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
+  const grand = Object.values(totals).reduce((a,b)=>a+b,0);
 
+  const field = document.getElementById('orbitField');
+  const detail = document.getElementById('orbitDetail');
+  field.innerHTML = '';
+  detail.innerHTML = `<span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span>`;
+
+  Object.entries(totals).forEach(([cat, amount], i)=>{
+    const meta = CATEGORY_META[cat] || CATEGORY_META.other;
+    const share = grand ? amount/grand : 0;
+    const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
+    const b = document.createElement('a');
+    b.href = `receipts.html?cat=${cat}`;
+    b.className = 'bubble' + (size<78 ? ' small':'');
+    b.style.width = size+'px'; b.style.height = size+'px';
+    b.style.background = meta.color;
+    const pos = ORBIT_POSITIONS[i % ORBIT_POSITIONS.length];
+    b.style.top = pos.top; b.style.left = pos.left;
+    b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
+    });
+    field.appendChild(b);
+  });
+}
+
+function renderActivityList(visibleActivity) {
   const listEl = document.getElementById('activityList');
   listEl.innerHTML = '';
-  visible.slice(0,6).forEach(r=>{
+  if (!visibleActivity.length) {
+    listEl.innerHTML = `<div class="activity-row" style="opacity:0.5; justify-content:center;">Nothing for this bank yet.</div>`;
+    return;
+  }
+  visibleActivity.slice(0,6).forEach(r=>{
     const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
     const a = document.createElement(r.no_receipt ? 'div' : 'a');
     a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
@@ -143,50 +172,46 @@ async function renderActivity() {
   });
 }
 
-(async function(){
-  const receipts = await fetchReceipts();
-  const activity = await fetchRecentActivity();
-  const missing = activity.filter(a => a.no_receipt);
+// Single source of truth for the bank filter: re-fetches everything and
+// re-renders the balance card, tiles, category bubbles and activity feed
+// together, so picking a bank actually scopes the whole page instead of
+// just the balance number.
+async function refreshDashboard() {
+  const [accounts, receipts, unmatched] = await Promise.all([
+    fetchAccounts(),
+    fetchReceipts(),
+    fetchUnmatchedTransactions(),
+  ]);
 
-  document.getElementById('receiptCount').textContent = receipts.length;
-  document.getElementById('missingCount').textContent = missing.length;
-  const weekTotal = activity.reduce((s,a)=>s+a.total,0);
-  document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
-
-  await renderBalance();
-
-  const totals = {};
-  receipts.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
-  const grand = Object.values(totals).reduce((a,b)=>a+b,0);
-
-  const field = document.getElementById('orbitField');
-  const detail = document.getElementById('orbitDetail');
-  const positions = [
-    {top:'2%', left:'6%'}, {top:'0%', left:'52%'}, {top:'44%', left:'0%'},
-    {top:'38%', left:'58%'}, {top:'66%', left:'30%'}, {top:'60%', left:'74%'}
-  ];
-  Object.entries(totals).forEach(([cat, amount], i)=>{
-    const meta = CATEGORY_META[cat] || CATEGORY_META.other;
-    const share = grand ? amount/grand : 0;
-    const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
-    const b = document.createElement('a');
-    b.href = `receipts.html?cat=${cat}`;
-    b.className = 'bubble' + (size<78 ? ' small':'');
-    b.style.width = size+'px'; b.style.height = size+'px';
-    b.style.background = meta.color;
-    const pos = positions[i % positions.length];
-    b.style.top = pos.top; b.style.left = pos.left;
-    b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
-    b.addEventListener('click', (e)=>{
-      e.preventDefault();
-      document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
-    });
-    field.appendChild(b);
+  const byBank = {};
+  accounts.forEach(a => {
+    if (!byBank[a.item_id]) byBank[a.item_id] = { name: a.institution_name || 'Bank', accounts: [] };
+    byBank[a.item_id].accounts.push(a);
   });
 
-  await renderActivity();
+  renderBankChips(byBank);
+  renderBalanceCard(byBank, accounts);
+
+  // Receipts aren't tied to a specific bank account yet, so they stay
+  // visible under every filter; bank transactions with no matching
+  // receipt are scoped to whichever bank is selected.
+  const visibleUnmatched = activeBankItemId
+    ? unmatched.filter(t => t.item_id === activeBankItemId)
+    : unmatched;
+  const visibleActivity = [...receipts.map(r => ({...r, no_receipt: false})), ...visibleUnmatched]
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  document.getElementById('receiptCount').textContent = receipts.length;
+  document.getElementById('missingCount').textContent = visibleUnmatched.length;
+  const weekTotal = visibleActivity.reduce((s,a)=>s+a.total,0);
+  document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+
+  renderOrbit(visibleActivity);
+  renderActivityList(visibleActivity);
+}
+
+(async function(){
+  await refreshDashboard();
 
   const circles = document.querySelectorAll('.circle');
   function tilt(x,y){
@@ -204,8 +229,7 @@ async function renderActivity() {
   wireBanksButton('banks-btn', {
     onBankChanged: async () => {
       activeBankItemId = null;
-      await renderBalance();
-      await renderActivity();
+      await refreshDashboard();
     }
   });
 })();

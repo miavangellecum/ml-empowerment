@@ -187,6 +187,22 @@
         .scan-drop .btn-upload:active {
             transform: scale(0.97);
         }
+        .btn-send {
+            display: block;
+            margin: 16px auto 0;
+            background: #7C9A79;
+            box-shadow: 0 8px 20px rgba(124, 154, 121, 0.35);
+        }
+        .btn-send:hover {
+            background: #6c8a69;
+            box-shadow: 0 10px 28px rgba(124, 154, 121, 0.45);
+        }
+        .btn-send:disabled {
+            background: rgba(244, 237, 226, 0.15);
+            color: rgba(244, 237, 226, 0.4);
+            box-shadow: none;
+            cursor: not-allowed;
+        }
 
         #fileName {
             margin-top: 14px;
@@ -398,8 +414,9 @@
                 <label for="fileInput" class="btn-upload" id="uploadLabel">Choose files</label>
 
                 <div id="fileName"></div>
-                <div id="scanStatus"></div>
                 <div id="scanQueue"></div>
+                <button type="button" class="btn-upload btn-send" id="sendBtn" style="display:none;">Send for scanning</button>
+                <div id="scanStatus"></div>
 
                 <div class="scan-formats">
                     <span>JPEG</span>
@@ -485,54 +502,96 @@
             }
 
             dropZone.addEventListener('click', function(e) {
-                if (e.target.closest('#uploadLabel')) return;
+                if (e.target.closest('#uploadLabel') || e.target.closest('#sendBtn')) return;
                 fileInput.click();
             });
 
             const queueEl = document.getElementById('scanQueue');
+            const sendBtn = document.getElementById('sendBtn');
             const API_BASE = 'http://localhost:8000';
+            // Keep this in sync with MAX_UPLOAD_MB in app.py — checking on
+            // the client means an oversized file is rejected instantly
+            // instead of sitting there while OCR chokes on it server-side.
+            const MAX_UPLOAD_MB = 15;
+            const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+            let pendingFiles = []; // { file, row, oversize }
+
+            function formatSize(bytes) {
+                return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            }
+
+            function buildQueue(files) {
+                queueEl.innerHTML = '';
+                pendingFiles = files.map(file => {
+                    const oversize = file.size > MAX_UPLOAD_BYTES;
+                    const row = document.createElement('div');
+                    row.className = 'queue-row ' + (oversize ? 'error' : 'pending');
+                    row.innerHTML = `<span class="queue-name">${file.name} · ${formatSize(file.size)}</span>` +
+                        `<span class="queue-status">${oversize ? `Too large (max ${MAX_UPLOAD_MB}MB)` : 'Ready'}</span>`;
+                    queueEl.appendChild(row);
+                    return { file, row, oversize };
+                });
+
+                fileName.textContent = files.length === 1
+                    ? 'Selected: ' + files[0].name
+                    : `Selected: ${files.length} receipts`;
+
+                const validCount = pendingFiles.filter(p => !p.oversize).length;
+                const oversizeCount = pendingFiles.length - validCount;
+
+                if (oversizeCount) {
+                    setStatus(
+                        `${oversizeCount} file${oversizeCount > 1 ? 's are' : ' is'} over ${MAX_UPLOAD_MB}MB and won't be sent — remove or replace ${oversizeCount > 1 ? 'them' : 'it'}.`,
+                        'error'
+                    );
+                } else {
+                    setStatus('', '');
+                }
+
+                sendBtn.style.display = pendingFiles.length ? 'block' : 'none';
+                sendBtn.disabled = validCount === 0;
+                sendBtn.textContent = validCount
+                    ? `Send ${validCount} receipt${validCount > 1 ? 's' : ''} for scanning`
+                    : 'Send for scanning';
+            }
 
             async function uploadOne(file) {
                 const formData = new FormData();
                 formData.append('file', file);
                 const res = await fetch(`${API_BASE}/extract`, { method: 'POST', body: formData });
                 if (!res.ok) {
+                    // 413 = server-side size guard (belt-and-braces alongside
+                    // the client check above) so a huge file can never hang
+                    // the OCR pipeline unnoticed.
                     const text = await res.text();
                     throw new Error('Server responded ' + res.status + ': ' + text);
                 }
                 return res.json();
             }
 
-            fileInput.addEventListener('change', async function(e) {
+            fileInput.addEventListener('change', function(e) {
                 const files = Array.from(e.target.files || []);
                 if (!files.length) return;
+                buildQueue(files);
+            });
 
-                fileName.textContent = files.length === 1
-                    ? 'Selected: ' + files[0].name
-                    : `Selected: ${files.length} receipts`;
-                queueEl.innerHTML = '';
+            sendBtn.addEventListener('click', async function() {
+                const toSend = pendingFiles.filter(p => !p.oversize);
+                if (!toSend.length) return;
 
-                // One row per file so progress on a multi-file batch is visible
-                // as each receipt finishes its own OCR + LLM pass.
-                const rows = files.map(f => {
-                    const row = document.createElement('div');
-                    row.className = 'queue-row pending';
-                    row.innerHTML = `<span class="queue-name">${f.name}</span><span class="queue-status">Queued</span>`;
-                    queueEl.appendChild(row);
-                    return row;
-                });
-
-                setStatus(`Processing ${files.length} receipt${files.length > 1 ? 's' : ''} (OCR + LLM)… this may take a moment.`, 'loading');
+                sendBtn.disabled = true;
+                fileInput.disabled = true;
+                setStatus(`Processing ${toSend.length} receipt${toSend.length > 1 ? 's' : ''} (OCR + LLM)… this may take a moment.`, 'loading');
 
                 let successCount = 0;
                 let lastReceiptId = null;
 
-                for (let i = 0; i < files.length; i++) {
-                    const row = rows[i];
+                for (const { file, row } of toSend) {
                     row.className = 'queue-row loading';
                     row.querySelector('.queue-status').textContent = 'Processing…';
                     try {
-                        const data = await uploadOne(files[i]);
+                        const data = await uploadOne(file);
                         row.className = 'queue-row success';
                         row.querySelector('.queue-status').textContent =
                             '€' + data.data.total.toFixed(2);
@@ -545,17 +604,20 @@
                     }
                 }
 
-                if (successCount === files.length) {
-                    setStatus(`Saved ${successCount} of ${files.length} receipt${files.length > 1 ? 's' : ''}.`, 'success');
+                fileInput.disabled = false;
+
+                if (successCount === toSend.length) {
+                    setStatus(`Saved ${successCount} of ${toSend.length} receipt${toSend.length > 1 ? 's' : ''}.`, 'success');
                 } else if (successCount > 0) {
-                    setStatus(`Saved ${successCount} of ${files.length} — some failed, see list above.`, 'error');
+                    setStatus(`Saved ${successCount} of ${toSend.length} — some failed, see list above.`, 'error');
                 } else {
                     setStatus('All uploads failed — see list above.', 'error');
+                    sendBtn.disabled = false;
                 }
 
                 // Only auto-navigate for a single, successful scan; batches
                 // stay on this page so the whole queue's status is visible.
-                if (files.length === 1 && successCount === 1) {
+                if (toSend.length === 1 && successCount === 1) {
                     setTimeout(function() {
                         location.href = 'receipt.html?id=' + lastReceiptId;
                     }, 1200);
