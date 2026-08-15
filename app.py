@@ -31,13 +31,11 @@ app.include_router(reports_router)
 MAX_UPLOAD_MB = 15
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
-
 @app.post("/extract")
 async def extract_receipt(file: UploadFile = File(...)):
     temp_path = f"temp_{file.filename}"
 
-    # Stream to disk in chunks so we can bail out as soon as the size limit
-    # is crossed, instead of buffering an arbitrarily large file first.
+    # Stream to disk with size limit (same as before)
     written = 0
     try:
         with open(temp_path, "wb") as f:
@@ -61,12 +59,12 @@ async def extract_receipt(file: UploadFile = File(...)):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not read the uploaded file.")
 
+    # Now process the file, with a finally to clean up
     try:
-        # Upload original file to S3 for permanent storage
         s3_key = f"receipts/{file.filename}"
         s3_url = upload_file_to_s3(temp_path, s3_key)
 
-        receipt = process_receipt(temp_path)  # returns Pydantic model
+        receipt = process_receipt(temp_path)          # returns Pydantic model
         receipt_dict = receipt.model_dump()
 
         receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
@@ -74,23 +72,27 @@ async def extract_receipt(file: UploadFile = File(...)):
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="Could not process the receipt.")
+        receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
 
-    # Ask the matching agent to look for a Plaid transaction that already
-    # covers this receipt (e.g. the bank charge posted before you got
-    # around to uploading the receipt). Matching a fresh receipt against
-    # existing transactions is fast and non-blocking enough to just do
-    # inline here; if it ever gets slow, move this to a background task.
-    matches = match_receipt(receipt_id)
+        matches = match_receipt(receipt_id)
 
-    os.remove(temp_path)
-    return {
-        "receipt_id": receipt_id,
-        "s3_url": s3_url,
-        "data": receipt_dict,
-        "matches": matches,
-    }
-
+        return {
+            "receipt_id": receipt_id,
+            "s3_url": s3_url,
+            "data": receipt_dict,
+            "matches": matches,
+        }
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 @app.get("/receipts")
 async def get_receipts_route():
     return get_receipts()
+
+@app.get("/receipts/{receipt_id}")
+async def get_receipt_route(receipt_id: str):
+    receipt = get_receipt(receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return receipt

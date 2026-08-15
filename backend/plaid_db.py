@@ -226,3 +226,62 @@ def get_transactions(item_id: str | None = None) -> list[dict]:
         r["id"] = str(r["id"])
         r.pop("merchant_embedding", None)  # not JSON-serializable-friendly, and irrelevant to the UI
     return rows
+def upsert_accounts(item_id: str, accounts: list[dict]):
+    """Stores/refreshes the latest balance snapshot for every account on an item."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        for a in accounts:
+            balances = a.get("balances") or {}
+            cur.execute("""
+                INSERT INTO plaid_accounts
+                    (account_id, item_id, name, official_name, mask, type, subtype,
+                     current_balance, available_balance, iso_currency_code, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (account_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    official_name = EXCLUDED.official_name,
+                    mask = EXCLUDED.mask,
+                    type = EXCLUDED.type,
+                    subtype = EXCLUDED.subtype,
+                    current_balance = EXCLUDED.current_balance,
+                    available_balance = EXCLUDED.available_balance,
+                    iso_currency_code = EXCLUDED.iso_currency_code,
+                    updated_at = now()
+            """, (
+                a.get("account_id"), item_id, a.get("name"), a.get("official_name"),
+                a.get("mask"), a.get("type"), a.get("subtype"),
+                balances.get("current"), balances.get("available"),
+                balances.get("iso_currency_code"),
+            ))
+        cur.close()
+
+
+def get_accounts(item_id: str | None = None) -> list[dict]:
+    """Accounts joined with their parent bank's institution_name, for display."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        if item_id:
+            cur.execute("""
+                SELECT pa.*, pi.institution_name FROM plaid_accounts pa
+                JOIN plaid_items pi ON pi.item_id = pa.item_id
+                WHERE pa.item_id = %s
+            """, (item_id,))
+        else:
+            cur.execute("""
+                SELECT pa.*, pi.institution_name FROM plaid_accounts pa
+                JOIN plaid_items pi ON pi.item_id = pa.item_id
+            """)
+        rows = cur.fetchall()
+        cols = [d.name for d in cur.description]
+        cur.close()
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def delete_item(item_id: str):
+    """Unlinks a bank locally: drops the item plus its accounts and transactions."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM plaid_transactions WHERE item_id = %s", (item_id,))
+        cur.execute("DELETE FROM plaid_accounts WHERE item_id = %s", (item_id,))
+        cur.execute("DELETE FROM plaid_items WHERE item_id = %s", (item_id,))
+        cur.close()

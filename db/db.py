@@ -49,6 +49,24 @@ def init_db():
             )
         """)
 
+        cur.execute("""
+                    CREATE TABLE IF NOT EXISTS plaid_accounts
+                    (
+                        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        account_id        TEXT UNIQUE NOT NULL,
+                        item_id           TEXT        NOT NULL REFERENCES plaid_items (item_id),
+                        name              TEXT,
+                        official_name     TEXT,
+                        mask              TEXT,
+                        type              TEXT,
+                        subtype           TEXT,
+                        current_balance   DECIMAL,
+                        available_balance DECIMAL,
+                        iso_currency_code TEXT,
+                        updated_at        TIMESTAMPTZ      DEFAULT now()
+                    )
+                    """)
+
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS plaid_transactions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

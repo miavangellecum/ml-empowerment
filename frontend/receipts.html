@@ -508,7 +508,7 @@
 
 <body class="theme-dark">
 
-    <!-- ── floating circles – matches index.html exactly ── -->
+    <!-- ── floating circles ── -->
     <div class="field" id="field">
         <div class="circle c1"></div>
         <div class="circle c2"></div>
@@ -545,10 +545,11 @@
         </div>
     </div>
 
-    <!-- ── bottom nav (actionbar) ── -->
+    <!-- ── bottom nav ── -->
     <nav class="actionbar">
         <a href="receipts.html" class="active">My Receipts</a>
         <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+        <a href="reports.html">Reports</a>
         <a href="index.html">Dashboard</a>
     </nav>
 
@@ -637,63 +638,65 @@
             }
 
             function buildReceiptDetails(r) {
-                let html = '';
-                const items = r.items || [];
-                if (items.length > 0) {
-                    items.forEach(it => {
-                        const qty = it.quantity || 1;
-                        const price = Number(it.total_price ?? it.unit_price ?? 0);
-                        html += `
-                            <div class="detail-line-item">
-                                <span class="name">${it.name}${qty > 1 ? `<span class="qty">×${qty}</span>` : ''}</span>
-                                <span class="price">€${price.toFixed(2)}</span>
-                            </div>
-                        `;
-                    });
-                } else {
-                    html += `<div class="empty-detail">No line items available.</div>`;
-                }
-                if (r.subtotal != null) {
-                    html += `
-                        <div class="detail-summary-row">
-                            <span>Subtotal</span>
-                            <span>€${r.subtotal.toFixed(2)}</span>
-                        </div>
-                    `;
-                }
-                if (r.tax != null) {
-                    html += `
-                        <div class="detail-summary-row">
-                            <span>Tax</span>
-                            <span>€${r.tax.toFixed(2)}</span>
-                        </div>
-                    `;
-                }
+        let html = '';
+        const items = r.items || [];
+        if (items.length > 0) {
+            items.forEach(it => {
+                const qty = it.quantity || 1;
+                const price = Number(it.total_price ?? it.unit_price ?? 0);
                 html += `
-                    <div class="detail-summary-row total">
-                        <span>Total</span>
-                        <span>€${r.total.toFixed(2)}</span>
+                    <div class="detail-line-item">
+                        <span class="name">${it.name}${qty > 1 ? `<span class="qty">×${qty}</span>` : ''}</span>
+                        <span class="price">€${price.toFixed(2)}</span>
                     </div>
                 `;
-                if (r.payment_method) {
-                    html += `
-                        <div class="detail-row">
-                            <span class="label">Payment</span>
-                            <span class="value highlight">${r.payment_method}</span>
-                        </div>
-                    `;
-                }
-                if (r.date) {
-                    html += `
-                        <div class="detail-row">
-                            <span class="label">Date</span>
-                            <span class="value">${formatDate(r.date)}</span>
-                        </div>
-                    `;
-                }
-                return html;
-            }
-
+            });
+        } else {
+            html += `<div class="empty-detail">No line items available.</div>`;
+        }
+        if (r.subtotal != null) {
+            html += `
+                <div class="detail-summary-row">
+                    <span>Subtotal</span>
+                    <span>€${r.subtotal.toFixed(2)}</span>
+                </div>
+            `;
+        }
+        if (r.tax != null) {
+            html += `
+                <div class="detail-summary-row">
+                    <span>Tax</span>
+                    <span>€${r.tax.toFixed(2)}</span>
+                </div>
+            `;
+        }
+        html += `
+            <div class="detail-summary-row total">
+                <span>Total</span>
+                <span>€${r.total.toFixed(2)}</span>
+            </div>
+            <div style="margin-top:12px; text-align:right;">
+                <a href="receipt.html?id=${r.id}" style="color:rgba(244,237,226,0.6); text-decoration:none; font-weight:500; font-size:13px; border:1px solid rgba(244,237,226,0.15); padding:4px 16px; border-radius:999px; display:inline-block;">View full receipt →</a>
+            </div>
+        `;
+        if (r.payment_method) {
+            html += `
+                <div class="detail-row">
+                    <span class="label">Payment</span>
+                    <span class="value highlight">${r.payment_method}</span>
+                </div>
+            `;
+        }
+        if (r.date) {
+            html += `
+                <div class="detail-row">
+                    <span class="label">Date</span>
+                    <span class="value">${formatDate(r.date)}</span>
+                </div>
+            `;
+        }
+        return html;
+    }
             // ── build items ──
             const fragment = document.createDocumentFragment();
             let totalSum = 0;

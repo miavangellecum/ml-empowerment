@@ -11,228 +11,244 @@
 </head>
 <body class="theme-dark">
 
-<div class="field" id="field">
-  <div class="circle c1"></div>
-  <div class="circle c2"></div>
-  <div class="circle c3"></div>
-  <div class="circle c4"></div>
-  <div class="circle c5"></div>
-  <div class="circle c6"></div>
-  <div class="circle c7"></div>
-</div>
-
-<div class="scene">
-  <div class="content">
-
-    <div class="topbar">
-      <div class="brand">◐ Spend</div>
-      <button id="banks-btn">🏦 Banks</button>
+    <div class="field" id="field">
+        <div class="circle c1"></div>
+        <div class="circle c2"></div>
+        <div class="circle c3"></div>
+        <div class="circle c4"></div>
+        <div class="circle c5"></div>
+        <div class="circle c6"></div>
+        <div class="circle c7"></div>
     </div>
 
-    <div class="title-block">
-      <h1>Budgeting and<br>Spending Insights</h1>
-    </div>
+    <div class="scene">
+      <div class="content">
 
-    <div class="balance-label" id="balanceLabel">TOTAL BALANCE</div>
-    <div class="balance-amount" id="balanceAmount">—</div>
-    <div class="bank-filter-row" id="bankFilterRow"></div>
-    <div class="balance-tiles">
-      <div class="balance-tile">This week<b id="weekSpend">—</b></div>
-      <div class="balance-tile">Receipts scanned<b id="receiptCount">—</b></div>
-      <div class="balance-tile">Missing receipts<b id="missingCount">—</b></div>
-    </div>
+        <div class="topbar">
+          <div class="brand">◐ Spend</div>
+          <button id="banks-btn">🏦 Banks</button>
+        </div>
 
-    <div class="panel">
-      <h3>Spend by category</h3>
-      <div class="sub">Bubble size = share of spend. Tap one.</div>
-      <div class="orbit-field" id="orbitField"></div>
-      <div class="orbit-detail" id="orbitDetail"><span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span></div>
-    </div>
+        <div class="title-block">
+          <h1>Budgeting and<br>Spending Insights</h1>
+        </div>
 
-    <div class="panel">
-      <h3>Recent activity</h3>
-      <div class="sub">Dashed red rows are bank transactions with no receipt attached yet.</div>
-      <div id="activityList"></div>
-    </div>
+        <div class="balance-label" id="balanceLabel">TOTAL BALANCE</div>
+        <div class="balance-amount" id="balanceAmount">—</div>
+        <div class="bank-filter-row" id="bankFilterRow"></div>
+        <div class="balance-tiles">
+          <div class="balance-tile">This week<b id="weekSpend">—</b></div>
+          <div class="balance-tile">Receipts scanned<b id="receiptCount">—</b></div>
+          <div class="balance-tile">Missing receipts<b id="missingCount">—</b></div>
+        </div>
 
-  </div>
-</div>
+        <div class="panel">
+          <h3>Spend by category</h3>
+          <div class="sub">Bubble size = share of spend. Tap one.</div>
+          <div class="orbit-field" id="orbitField"></div>
+          <div class="orbit-detail" id="orbitDetail"><span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span></div>
+        </div>
 
-<nav class="actionbar">
-  <a href="receipts.html">My Receipts</a>
-  <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
-  <a href="index.html" class="active">Dashboard</a>
-</nav>
+        <div class="panel">
+          <h3>Recent activity</h3>
+          <div class="sub">Dashed red rows are bank transactions with no receipt attached yet.</div>
+          <div id="activityList"></div>
+        </div>
 
-<script src="js/data.js"></script>
-<script>
-let activeBankItemId = null; // null = "All banks"
-const ORBIT_POSITIONS = [
-  {top:'2%', left:'6%'}, {top:'0%', left:'52%'}, {top:'44%', left:'0%'},
-  {top:'38%', left:'58%'}, {top:'66%', left:'30%'}, {top:'60%', left:'74%'}
-];
-
-function renderBankChips(byBank) {
-  const chipRow = document.getElementById('bankFilterRow');
-  chipRow.innerHTML = '';
-  const bankIds = Object.keys(byBank);
-  if (bankIds.length <= 1) return;
-
-  const allChip = document.createElement('button');
-  allChip.type = 'button';
-  allChip.className = 'bank-filter-chip' + (activeBankItemId === null ? ' active' : '');
-  allChip.textContent = 'All banks';
-  allChip.addEventListener('click', () => { activeBankItemId = null; refreshDashboard(); });
-  chipRow.appendChild(allChip);
-
-  bankIds.forEach(itemId => {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'bank-filter-chip' + (activeBankItemId === itemId ? ' active' : '');
-    chip.textContent = byBank[itemId].name;
-    chip.addEventListener('click', () => { activeBankItemId = itemId; refreshDashboard(); });
-    chipRow.appendChild(chip);
-  });
-}
-
-function renderBalanceCard(byBank, allAccounts) {
-  const labelEl = document.getElementById('balanceLabel');
-  const amountEl = document.getElementById('balanceAmount');
-
-  if (!allAccounts.length) {
-    labelEl.textContent = 'TOTAL BALANCE · No bank connected';
-    amountEl.textContent = '€0.00';
-    return;
-  }
-
-  const visibleAccounts = activeBankItemId ? (byBank[activeBankItemId]?.accounts || []) : allAccounts;
-  const total = visibleAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
-  const currency = visibleAccounts[0]?.iso_currency_code === 'USD' ? '$' : '€';
-  const mask = visibleAccounts[0]?.mask ? `**** ${visibleAccounts[0].mask}` : `${visibleAccounts.length} account${visibleAccounts.length===1?'':'s'}`;
-  const label = activeBankItemId
-    ? `${byBank[activeBankItemId].name.toUpperCase()} BALANCE · ${mask}`
-    : `TOTAL BALANCE · ${mask}`;
-
-  labelEl.textContent = label;
-  amountEl.textContent = currency + total.toFixed(2);
-}
-
-function renderOrbit(visibleActivity) {
-  const totals = {};
-  visibleActivity.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
-  const grand = Object.values(totals).reduce((a,b)=>a+b,0);
-
-  const field = document.getElementById('orbitField');
-  const detail = document.getElementById('orbitDetail');
-  field.innerHTML = '';
-  detail.innerHTML = `<span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span>`;
-
-  Object.entries(totals).forEach(([cat, amount], i)=>{
-    const meta = CATEGORY_META[cat] || CATEGORY_META.other;
-    const share = grand ? amount/grand : 0;
-    const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
-    const b = document.createElement('a');
-    b.href = `receipts.html?cat=${cat}`;
-    b.className = 'bubble' + (size<78 ? ' small':'');
-    b.style.width = size+'px'; b.style.height = size+'px';
-    b.style.background = meta.color;
-    const pos = ORBIT_POSITIONS[i % ORBIT_POSITIONS.length];
-    b.style.top = pos.top; b.style.left = pos.left;
-    b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
-    b.addEventListener('click', (e)=>{
-      e.preventDefault();
-      document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
-    });
-    field.appendChild(b);
-  });
-}
-
-function renderActivityList(visibleActivity) {
-  const listEl = document.getElementById('activityList');
-  listEl.innerHTML = '';
-  if (!visibleActivity.length) {
-    listEl.innerHTML = `<div class="activity-row" style="opacity:0.5; justify-content:center;">Nothing for this bank yet.</div>`;
-    return;
-  }
-  visibleActivity.slice(0,6).forEach(r=>{
-    const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
-    const a = document.createElement(r.no_receipt ? 'div' : 'a');
-    a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
-    if(!r.no_receipt) a.href = `receipt.html?id=${r.id}`;
-    a.innerHTML = `
-      <div class="icon">${r.no_receipt ? '⚠️' : meta.icon}</div>
-      <div class="meta">
-        <div class="name">${r.store_name}</div>
-        <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
       </div>
-      <div class="amt">−€${r.total.toFixed(2)}</div>`;
-    listEl.appendChild(a);
-  });
-}
+    </div>
 
-// Single source of truth for the bank filter: re-fetches everything and
-// re-renders the balance card, tiles, category bubbles and activity feed
-// together, so picking a bank actually scopes the whole page instead of
-// just the balance number.
-async function refreshDashboard() {
-  const [accounts, receipts, unmatched] = await Promise.all([
-    fetchAccounts(),
-    fetchReceipts(),
-    fetchUnmatchedTransactions(),
-  ]);
+    <nav class="actionbar">
+      <a href="receipts.html">My Receipts</a>
+      <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+      <a href="index.html" class="active">Dashboard</a>
+    </nav>
 
-  const byBank = {};
-  accounts.forEach(a => {
-    if (!byBank[a.item_id]) byBank[a.item_id] = { name: a.institution_name || 'Bank', accounts: [] };
-    byBank[a.item_id].accounts.push(a);
-  });
 
-  renderBankChips(byBank);
-  renderBalanceCard(byBank, accounts);
+    <script src="js/data.js"></script>
+    <script>
+      let activeBankItemId = null; // null = "All banks"
+      const ORBIT_POSITIONS = [
+        {top:'2%', left:'6%'}, {top:'0%', left:'52%'}, {top:'44%', left:'0%'},
+        {top:'38%', left:'58%'}, {top:'66%', left:'30%'}, {top:'60%', left:'74%'}
+      ];
 
-  // Receipts aren't tied to a specific bank account yet, so they stay
-  // visible under every filter; bank transactions with no matching
-  // receipt are scoped to whichever bank is selected.
-  const visibleUnmatched = activeBankItemId
-    ? unmatched.filter(t => t.item_id === activeBankItemId)
-    : unmatched;
-  const visibleActivity = [...receipts.map(r => ({...r, no_receipt: false})), ...visibleUnmatched]
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+      function renderBankChips(byBank) {
+        const chipRow = document.getElementById('bankFilterRow');
+        chipRow.innerHTML = '';
+        const bankIds = Object.keys(byBank);
+        if (bankIds.length <= 1) return;
 
-  document.getElementById('receiptCount').textContent = receipts.length;
-  document.getElementById('missingCount').textContent = visibleUnmatched.length;
-  const weekTotal = visibleActivity.reduce((s,a)=>s+a.total,0);
-  document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+        const allChip = document.createElement('button');
+        allChip.type = 'button';
+        allChip.className = 'bank-filter-chip' + (activeBankItemId === null ? ' active' : '');
+        allChip.textContent = 'All banks';
+        allChip.addEventListener('click', () => { activeBankItemId = null; refreshDashboard(); });
+        chipRow.appendChild(allChip);
 
-  renderOrbit(visibleActivity);
-  renderActivityList(visibleActivity);
-}
+        bankIds.forEach(itemId => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'bank-filter-chip' + (activeBankItemId === itemId ? ' active' : '');
+          chip.textContent = byBank[itemId].name;
+          chip.addEventListener('click', () => { activeBankItemId = itemId; refreshDashboard(); });
+          chipRow.appendChild(chip);
+        });
+      }
 
-(async function(){
-  await refreshDashboard();
+      function renderBalanceCard(byBank, allAccounts) {
+        const labelEl = document.getElementById('balanceLabel');
+        const amountEl = document.getElementById('balanceAmount');
 
-  const circles = document.querySelectorAll('.circle');
-  function tilt(x,y){
-    const px = x/window.innerWidth - 0.5;
-    const py = y/window.innerHeight - 0.5;
-    circles.forEach((c,i)=>{
-      const depth = (i+1)*14;
-      c.style.transform = `translate(${px*depth}px, ${py*depth}px)`;
-    });
-  }
-  window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
-  window.addEventListener('touchmove', e=>{ const t=e.touches[0]; tilt(t.clientX,t.clientY); }, {passive:true});
+        if (!allAccounts.length) {
+          labelEl.textContent = 'TOTAL BALANCE · No bank connected';
+          amountEl.textContent = '€0.00';
+          return;
+        }
 
-  // Banks button — opens the linked-banks overview (connect/unlink), wired via data.js.
-  wireBanksButton('banks-btn', {
-    onBankChanged: async () => {
-      activeBankItemId = null;
-      await refreshDashboard();
-    }
-  });
-})();
-</script>
+        const visibleAccounts = activeBankItemId ? (byBank[activeBankItemId]?.accounts || []) : allAccounts;
+        const total = visibleAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
+        const currency = visibleAccounts[0]?.iso_currency_code === 'USD' ? '$' : '€';
+        const mask = visibleAccounts[0]?.mask ? `**** ${visibleAccounts[0].mask}` : `${visibleAccounts.length} account${visibleAccounts.length===1?'':'s'}`;
+        const label = activeBankItemId
+          ? `${byBank[activeBankItemId].name.toUpperCase()} BALANCE · ${mask}`
+          : `TOTAL BALANCE · ${mask}`;
+
+        labelEl.textContent = label;
+        amountEl.textContent = currency + total.toFixed(2);
+      }
+
+      function renderOrbit(visibleActivity) {
+        const totals = {};
+        visibleActivity.forEach(r => { totals[r.category] = (totals[r.category]||0) + r.total; });
+        const grand = Object.values(totals).reduce((a,b)=>a+b,0);
+
+        const field = document.getElementById('orbitField');
+        const detail = document.getElementById('orbitDetail');
+        field.innerHTML = '';
+        detail.innerHTML = `<span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span>`;
+
+        Object.entries(totals).forEach(([cat, amount], i)=>{
+          const meta = CATEGORY_META[cat] || CATEGORY_META.other;
+          const share = grand ? amount/grand : 0;
+          const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
+          const b = document.createElement('a');
+          b.href = `receipts.html?cat=${cat}`;
+          b.className = 'bubble' + (size<78 ? ' small':'');
+          b.style.width = size+'px'; b.style.height = size+'px';
+          b.style.background = meta.color;
+          // center the bubble at the percentage position so growth doesn't "leak" the bubble origin
+          const pos = ORBIT_POSITIONS[i % ORBIT_POSITIONS.length];
+          b.style.top = pos.top; b.style.left = pos.left;
+          b.style.transform = 'translate(-50%, -50%)';
+          // make stacking predictable: smaller bubbles sit above larger ones
+          b.style.zIndex = String(10000 - Math.round(size));
+          // make the bubble content center and prevent overflow
+          b.style.display = 'flex'; b.style.flexDirection = 'column'; b.style.justifyContent = 'center'; b.style.alignItems = 'center'; b.style.textAlign = 'center'; b.style.overflow = 'hidden';
+          b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
+
+          // adapt font sizes to the bubble size so text doesn't leak out
+          const amtEl = b.querySelector('.amt');
+          const catEl = b.querySelector('.cat');
+          if (amtEl) amtEl.style.fontSize = Math.max(11, Math.round(size/6)) + 'px';
+          if (catEl) catEl.style.fontSize = Math.max(9, Math.round(size/10)) + 'px';
+
+          b.addEventListener('click', (e)=>{
+            e.preventDefault();
+            document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
+            b.classList.add('active');
+            detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
+            // bring clicked bubble to front for clarity
+            b.style.zIndex = String(20000);
+          });
+          field.appendChild(b);
+        });
+      }
+
+      function renderActivityList(visibleActivity) {
+        const listEl = document.getElementById('activityList');
+        listEl.innerHTML = '';
+        if (!visibleActivity.length) {
+          listEl.innerHTML = `<div class="activity-row" style="opacity:0.5; justify-content:center;">Nothing for this bank yet.</div>`;
+          return;
+        }
+        visibleActivity.slice(0,6).forEach(r=>{
+          const meta = CATEGORY_META[r.category] || CATEGORY_META.other;
+          const a = document.createElement(r.no_receipt ? 'div' : 'a');
+          a.className = 'activity-row' + (r.no_receipt ? ' warn' : '');
+          if(!r.no_receipt) a.href = `receipt.html?id=${r.id}`;
+          a.innerHTML = `
+            <div class="icon">${r.no_receipt ? '⚠️' : meta.icon}</div>
+            <div class="meta">
+              <div class="name">${r.store_name}</div>
+              <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
+            </div>
+            <div class="amt">−€${r.total.toFixed(2)}</div>`;
+          listEl.appendChild(a);
+        });
+      }
+
+      // Single source of truth for the bank filter: re-fetches everything and
+      // re-renders the balance card, tiles, category bubbles and activity feed
+      // together, so picking a bank actually scopes the whole page instead of
+      // just the balance number.
+      async function refreshDashboard() {
+        const [accounts, receipts, unmatched] = await Promise.all([
+          fetchAccounts(),
+          fetchReceipts(),
+          fetchUnmatchedTransactions(),
+        ]);
+
+        const byBank = {};
+        accounts.forEach(a => {
+          if (!byBank[a.item_id]) byBank[a.item_id] = { name: a.institution_name || 'Bank', accounts: [] };
+          byBank[a.item_id].accounts.push(a);
+        });
+
+        renderBankChips(byBank);
+        renderBalanceCard(byBank, accounts);
+
+        // Receipts aren't tied to a specific bank account yet, so they stay
+        // visible under every filter; bank transactions with no matching
+        // receipt are scoped to whichever bank is selected.
+        const visibleUnmatched = activeBankItemId
+          ? unmatched.filter(t => t.item_id === activeBankItemId)
+          : unmatched;
+        const visibleActivity = [...receipts.map(r => ({...r, no_receipt: false})), ...visibleUnmatched]
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        document.getElementById('receiptCount').textContent = receipts.length;
+        document.getElementById('missingCount').textContent = visibleUnmatched.length;
+        const weekTotal = visibleActivity.reduce((s,a)=>s+a.total,0);
+        document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+
+        renderOrbit(visibleActivity);
+        renderActivityList(visibleActivity);
+      }
+
+      (async function(){
+        await refreshDashboard();
+
+        const circles = document.querySelectorAll('.circle');
+        function tilt(x,y){
+          const px = x/window.innerWidth - 0.5;
+          const py = y/window.innerHeight - 0.5;
+          circles.forEach((c,i)=>{
+            const depth = (i+1)*14;
+            c.style.transform = `translate(${px*depth}px, ${py*depth}px)`;
+          });
+        }
+        window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+        window.addEventListener('touchmove', e=>{ const t=e.touches[0]; tilt(t.clientX,t.clientY); }, {passive:true});
+
+        // Banks button — opens the linked-banks overview (connect/unlink), wired via data.js.
+        wireBanksButton('banks-btn', {
+          onBankChanged: async () => {
+            activeBankItemId = null;
+            await refreshDashboard();
+          }
+        });
+      })();
+    </script>
 </body>
 </html>
