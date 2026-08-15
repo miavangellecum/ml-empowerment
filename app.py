@@ -69,7 +69,11 @@ async def extract_receipt(file: UploadFile = File(...)):
         receipt = process_receipt(temp_path)  # returns Pydantic model
         receipt_dict = receipt.model_dump()
 
-    receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
+        receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail="Could not process the receipt.")
 
     # Ask the matching agent to look for a Plaid transaction that already
     # covers this receipt (e.g. the bank charge posted before you got

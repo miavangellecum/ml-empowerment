@@ -3,49 +3,63 @@
 
 const API_BASE = "http://localhost:8000";
 
+// Kept in sync with extraction/llm/extract.py's IRS_CATEGORIES list.
+// No icons by design — color + label carry the category instead.
 const CATEGORY_META = {
-  groceries: { icon: "🛒", tone: "tone-groceries", color: "var(--sage)" },
-  dining:    { icon: "🍽️", tone: "tone-dining", color: "var(--red)" },
-  delivery:  { icon: "📦", tone: "tone-delivery", color: "var(--mustard)" },
-  household: { icon: "🏠", tone: "tone-household", color: "var(--teal)" },
-  transport: { icon: "🚌", tone: "tone-transport", color: "var(--plum)" },
-  other:     { icon: "✳️", tone: "tone-other", color: "#A9A296" },
+  advertising:                      { icon: "", color: "var(--sage)" },
+  car_and_truck_expenses:           { icon: "", color: "var(--red)" },
+  commissions_and_fees:             { icon: "", color: "var(--mustard)" },
+  contract_labor:                   { icon: "", color: "var(--teal)" },
+  insurance:                        { icon: "", color: "var(--plum)" },
+  interest:                         { icon: "", color: "#A9A296" },
+  legal_and_professional_services:  { icon: "", color: "#C9A876" },
+  office_expense:                   { icon: "", color: "#5B7DB1" },
+  rent_or_lease:                    { icon: "", color: "#B1785B" },
+  repairs_and_maintenance:          { icon: "", color: "var(--sage)" },
+  supplies:                         { icon: "", color: "var(--red)" },
+  taxes_and_licenses:               { icon: "", color: "var(--mustard)" },
+  travel:                           { icon: "", color: "var(--teal)" },
+  meals:                            { icon: "", color: "var(--plum)" },
+  utilities:                        { icon: "", color: "#A9A296" },
+  wages:                            { icon: "", color: "#C9A876" },
+  other_expenses:                   { icon: "", color: "#A9A296" },
+  personal_non_deductible:          { icon: "", color: "#8C8477" },
+  // Fallbacks used elsewhere in this file when a category doesn't match
+  // any of the above (e.g. an unmatched Plaid transaction's raw category).
+  uncategorized:                    { icon: "", color: "#A9A296" },
+  other:                            { icon: "", color: "#A9A296" },
 };
 
 // Placeholder data shaped like the FastAPI /receipts response, used only
 // when the backend can't be reached.
 const RECEIPTS = [
-  { id: 1, store_name: "Albert Heijn", date: "2025-04-29", payment_method: "iDEAL", currency: "EUR", category: "groceries", subtotal: 50.10, tax: 4.20, total: 54.30,
+  { id: 1, store_name: "Staples", date: "2026-07-02", payment_method: "card", currency: "USD", category: "office_expense", subtotal: 84.50, tax: 6.76, total: 91.26,
     items: [
-      { name: "Boodschappen, zie specificatie", quantity: 1, unit_price: 50.80, total_price: 50.80, category: "groceries" },
-      { name: "Bezorgkosten", quantity: 1, unit_price: 5.70, total_price: 5.70, category: "delivery" },
+      { name: "Printer paper (5 reams)", quantity: 5, unit_price: 8.50, total_price: 42.50, category: "office_expense" },
+      { name: "Ink cartridges", quantity: 2, unit_price: 21.00, total_price: 42.00, category: "office_expense" },
     ] },
-  { id: 2, store_name: "Uber Eats", date: "2025-05-02", payment_method: "Card", currency: "EUR", category: "dining", subtotal: 20.00, tax: 2.80, total: 22.80,
+  { id: 2, store_name: "Delta Airlines", date: "2026-07-05", payment_method: "card", currency: "USD", category: "travel", subtotal: 412.00, tax: 0, total: 412.00,
     items: [
-      { name: "Ramen bowl", quantity: 1, unit_price: 14.50, total_price: 14.50, category: "dining" },
-      { name: "Delivery fee", quantity: 1, unit_price: 5.50, total_price: 5.50, category: "delivery" },
-      { name: "Tip", quantity: 1, unit_price: 2.80, total_price: 2.80, category: "dining" },
+      { name: "Round-trip flight, client meeting", quantity: 1, unit_price: 412.00, total_price: 412.00, category: "travel" },
     ] },
-  { id: 3, store_name: "IKEA", date: "2025-05-04", payment_method: "Card", currency: "EUR", category: "household", subtotal: 72.90, tax: 5.60, total: 78.50,
+  { id: 3, store_name: "The Grill House", date: "2026-07-06", payment_method: "card", currency: "USD", category: "meals", subtotal: 68.20, tax: 5.46, total: 78.66,
     items: [
-      { name: "BILLY bookcase", quantity: 1, unit_price: 59.99, total_price: 59.99, category: "household" },
-      { name: "Storage box, set of 3", quantity: 1, unit_price: 12.91, total_price: 12.91, category: "household" },
+      { name: "Client dinner", quantity: 1, unit_price: 68.20, total_price: 68.20, category: "meals" },
     ] },
-  { id: 4, store_name: "NS Reizen", date: "2025-05-05", payment_method: "iDEAL", currency: "EUR", category: "transport", subtotal: 11.80, tax: 0.60, total: 12.40,
+  { id: 4, store_name: "Verizon Wireless", date: "2026-07-10", payment_method: "bank transfer", currency: "USD", category: "utilities", subtotal: 145.00, tax: 0, total: 145.00,
     items: [
-      { name: "Single trip, 2nd class", quantity: 1, unit_price: 12.40, total_price: 12.40, category: "transport" },
+      { name: "Business line, monthly", quantity: 1, unit_price: 145.00, total_price: 145.00, category: "utilities" },
     ] },
-  { id: 5, store_name: "Bol.com", date: "2025-05-06", payment_method: "Card", currency: "EUR", category: "delivery", subtotal: 28.50, tax: 2.70, total: 31.20,
+  { id: 5, store_name: "Whole Foods Market", date: "2026-07-11", payment_method: "cash", currency: "USD", category: "personal_non_deductible", subtotal: 52.10, tax: 0, total: 52.10,
     items: [
-      { name: "USB-C cable, 2m", quantity: 2, unit_price: 9.25, total_price: 18.50, category: "other" },
-      { name: "Shipping", quantity: 1, unit_price: 10.00, total_price: 10.00, category: "delivery" },
+      { name: "Groceries", quantity: 1, unit_price: 52.10, total_price: 52.10, category: "personal_non_deductible" },
     ] },
 ];
 
 // Bank transactions pulled in via Plaid that have no matching scanned receipt yet.
 const UNMATCHED_TRANSACTIONS = [
-  { id: 101, store_name: "Shell Tankstation", date: "2025-05-07", category: "transport", total: 64.20, no_receipt: true },
-  { id: 102, store_name: "Netflix", date: "2025-05-06", category: "other", total: 15.99, no_receipt: true },
+  { id: 101, store_name: "AWS", date: "2026-07-08", category: "uncategorized", total: 63.40, no_receipt: true },
+  { id: 102, store_name: "Adobe", date: "2026-07-09", category: "uncategorized", total: 54.99, no_receipt: true },
 ];
 
 async function fetchReceipts() {
@@ -58,8 +72,8 @@ async function fetchReceipts() {
       store_name: r.store_name,
       date: r.date,
       payment_method: r.payment_method,
-      currency: r.currency || "EUR",
-      category: r.category || "other",
+      currency: r.currency || "USD",
+      category: r.category || "other_expenses",
       subtotal: r.subtotal,
       tax: r.tax,
       total: r.total,
@@ -82,7 +96,7 @@ async function fetchUnmatchedTransactions() {
         id: `txn-${t.transaction_id || t.id}`,
         store_name: t.merchant_name || t.name || "Unknown",
         date: t.date,
-        category: (t.category || "other").toLowerCase(),
+        category: "uncategorized", // Plaid's own category taxonomy doesn't map to IRS categories — left uncategorized until reconciled
         total: Math.abs(t.amount),
         no_receipt: true,
         item_id: t.item_id || null,
@@ -134,6 +148,42 @@ async function fetchRecentActivity() {
   const receipts = receiptsRaw.map(r => ({ ...r, no_receipt: false }));
   const combined = [...receipts, ...unmatched];
   return combined.sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+// ---------------------------------------------------------------------
+// Reports — deterministic summary numbers + the on-demand AI narrative.
+// Used by reports.html.
+// ---------------------------------------------------------------------
+
+function _reportsQuery(startDate, endDate) {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+async function fetchExpenseSummary(startDate, endDate) {
+  const res = await fetch(`${API_BASE}/reports/summary${_reportsQuery(startDate, endDate)}`);
+  if (!res.ok) throw new Error(`Failed to load expense summary (${res.status})`);
+  return res.json();
+}
+
+async function fetchExpenseLedger(startDate, endDate, category) {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  if (category) params.set('category', category);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/reports/ledger${qs ? '?' + qs : ''}`);
+  if (!res.ok) throw new Error(`Failed to load ledger (${res.status})`);
+  return res.json();
+}
+
+async function fetchAIAuditReport(startDate, endDate) {
+  const res = await fetch(`${API_BASE}/reports/summary/ai${_reportsQuery(startDate, endDate)}`);
+  if (!res.ok) throw new Error(`Failed to generate AI report (${res.status})`);
+  return res.json(); // { report_markdown, data }
 }
 
 // ---------------------------------------------------------------------

@@ -6,23 +6,22 @@ without depending on live OCR/Bedrock/Plaid-sandbox timing lining up.
 Run from the project root (so the `db`/`backend` packages resolve):
     python scripts/seed_mock_data.py
 
-Safe to re-run — uses ON CONFLICT upserts, so it won't duplicate rows if
-you run it twice with the same MOCK_ITEM_ID.
-
-Design: 5 receipts, 6 Plaid transactions. 4 of the receipts have a
-deliberately close counterpart transaction (same rough amount, merchant
-name close enough for the embedding to catch it, date within a few days)
-so the matcher auto-confirms or at least surfaces them as pending. One
-receipt and two transactions are left with no counterpart, so /reports
-has something to flag under audit_flags.
+Idempotent: unlike plaid_transactions (deduped via transaction_id +
+ON CONFLICT), receipts have no natural key, so a second run of this script
+used to insert duplicate rows every time (4x Staples, etc.). Fixed by
+deleting any previous rows for these exact mock store names before
+reinserting — safe here because the store name list below is fixed and
+scoped to this script, not something a real /extract upload would ever
+collide with.
 """
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from db.cockroach import get_conn
 from db.db import init_db, save_receipt
-from backend.plaid_db import save_item, upsert_transactions
+from backend.plaid_db import init_plaid_db, save_item, upsert_transactions
 from db.matcher import match_receipt, match_transaction
 
 MOCK_ITEM_ID = "mock-item-001"
@@ -93,23 +92,18 @@ MOCK_RECEIPTS = [
 ]
 
 MOCK_TRANSACTIONS = [
-    # matches receipt[0] Staples
     {"transaction_id": "mock-tx-1", "account_id": "acct-1", "name": "STAPLES 00012938 BOSTON MA",
      "merchant_name": "Staples", "amount": 91.26, "iso_currency_code": "USD",
      "category": ["Shops", "Office Supplies"], "date": "2026-07-03", "pending": False},
-    # matches receipt[1] Delta
     {"transaction_id": "mock-tx-2", "account_id": "acct-1", "name": "DELTA AIR 0067192834571",
      "merchant_name": "Delta Air Lines", "amount": 412.00, "iso_currency_code": "USD",
      "category": ["Travel", "Airlines"], "date": "2026-07-05", "pending": False},
-    # matches receipt[2] The Grill House
     {"transaction_id": "mock-tx-3", "account_id": "acct-1", "name": "SQ *THE GRILL HOUSE",
      "merchant_name": "The Grill House", "amount": 78.66, "iso_currency_code": "USD",
      "category": ["Food and Drink", "Restaurants"], "date": "2026-07-07", "pending": False},
-    # matches receipt[3] Verizon
     {"transaction_id": "mock-tx-4", "account_id": "acct-1", "name": "VERIZON WIRELESS PAYMENTS",
      "merchant_name": "Verizon", "amount": 145.00, "iso_currency_code": "USD",
      "category": ["Service", "Telecommunication Services"], "date": "2026-07-10", "pending": False},
-    # deliberately unmatched: no receipt uploaded for these
     {"transaction_id": "mock-tx-5", "account_id": "acct-1", "name": "AWS  AMZN.COM/BILL WA",
      "merchant_name": "Amazon Web Services", "amount": 63.40, "iso_currency_code": "USD",
      "category": ["Service", "Cloud Computing"], "date": "2026-07-08", "pending": False},
@@ -119,9 +113,27 @@ MOCK_TRANSACTIONS = [
 ]
 
 
+def _reset_previous_mock_receipts():
+    """Deletes any receipts left over from a prior run of this exact
+    script, identified by store name. line_items and
+    receipt_transaction_matches cascade-delete automatically."""
+    store_names = [r["store_name"] for r in MOCK_RECEIPTS]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM receipts WHERE store_name = ANY(%s)", (store_names,))
+        deleted = cur.rowcount
+        cur.close()
+    if deleted:
+        print(f"  removed {deleted} receipt(s) from a previous seed run")
+
+
 def main():
     print("Initializing schema...")
     init_db()
+    init_plaid_db()
+
+    print("Clearing any previously-seeded mock receipts...")
+    _reset_previous_mock_receipts()
 
     print(f"Ensuring mock Plaid item '{MOCK_ITEM_ID}' exists...")
     save_item(MOCK_ITEM_ID, access_token="mock-access-token", institution_name="Mock Bank")
@@ -133,7 +145,7 @@ def main():
         receipt_ids.append(receipt_id)
         print(f"  saved receipt: {r['store_name']} (${r['total']}) -> {receipt_id}")
 
-    print(f"Inserting {len(MOCK_TRANSACTIONS)} mock transactions...")
+    print(f"Upserting {len(MOCK_TRANSACTIONS)} mock transactions (already idempotent via transaction_id)...")
     new_tx_ids = upsert_transactions(MOCK_ITEM_ID, MOCK_TRANSACTIONS)
     print(f"  {len(new_tx_ids)} newly inserted")
 

@@ -154,7 +154,7 @@ def get_receipts() -> list[dict]:
         cur.execute(
             """
             SELECT id, store_name, date, payment_method, currency,
-                   subtotal, tax, total, s3_url, created_at
+                   subtotal, tax, total, s3_url, created_at, category
             FROM receipts
             ORDER BY created_at DESC
             """
