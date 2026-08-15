@@ -1,13 +1,15 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from extraction.extraction import process_receipt
-from db.db import save_receipt, get_receipts, init_db
+from db.db import save_receipt, get_receipts, get_receipt, init_db
 from db.matcher import match_receipt
 from backend.aws_clients import upload_file_to_s3
 
@@ -68,11 +70,6 @@ async def extract_receipt(file: UploadFile = File(...)):
         receipt_dict = receipt.model_dump()
 
         receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
-    except Exception:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(status_code=400, detail="Could not process the receipt.")
-        receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
 
         matches = match_receipt(receipt_id)
 
@@ -82,6 +79,14 @@ async def extract_receipt(file: UploadFile = File(...)):
             "data": receipt_dict,
             "matches": matches,
         }
+    except HTTPException:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail="Could not process the receipt.")
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -96,3 +101,5 @@ async def get_receipt_route(receipt_id: str):
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
     return receipt
+
+app.mount("/", StaticFiles(directory="frontend", html=True), name="static")

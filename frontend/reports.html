@@ -105,6 +105,7 @@
       <div class="sub">The AI narrative report classifies unreceipted charges and writes it up — takes a few seconds.</div>
       <div class="report-actions">
         <button id="generateAiBtn" type="button">Generate AI report</button>
+        <button id="downloadPdfBtn" type="button" disabled style="opacity:0.6;">Download PDF</button>
         <a id="csvLink" href="#">Download CSV</a>
       </div>
       <div class="ai-report" id="aiReport"></div>
@@ -116,8 +117,8 @@
 <nav class="actionbar">
   <a href="receipts.html">My Receipts</a>
   <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
-  <a href="index.html">Dashboard</a>
   <a href="reports.html" class="active">Reports</a>
+  <a href="index.html">Dashboard</a>
 </nav>
 
 <script src="js/data.js"></script>
@@ -260,6 +261,37 @@ function renderMarkdownLite(md) {
       btn.textContent = 'Generate AI report';
     }
   });
+
+  // Download PDF: open a printable window with the rendered report and call print().
+  const downloadBtn = document.getElementById('downloadPdfBtn');
+  downloadBtn.addEventListener('click', () => {
+    const content = document.getElementById('aiReport').innerHTML;
+    if (!content.trim()) return alert('No report to download. Generate it first.');
+    const w = window.open('', '_blank');
+    const doc = w.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Expense AI Report</title><link href="css/style.css" rel="stylesheet"></head><body style="background:#fff;color:#000;padding:24px;">`);
+    doc.write(`<div>${content}</div>`);
+    doc.write('</body></html>');
+    doc.close();
+    // Give the browser a moment to render then trigger print.
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) { console.error(e); alert('Unable to open print dialog.'); } }, 300);
+  });
+
+  // Enable the download button when the AI report is inserted.
+  const origRender = renderMarkdownLite;
+  // Monkeypatch: wrap renderMarkdownLite to enable the button after rendering
+  function renderMarkdownLiteAndEnable(md) {
+    const html = origRender(md);
+    // enable download if there's content
+    if (html && html.trim() !== '') {
+      downloadBtn.disabled = false;
+      downloadBtn.style.opacity = 1;
+    }
+    return html;
+  }
+  // Replace calls in this module by reassigning the name used above
+  renderMarkdownLite = renderMarkdownLiteAndEnable;
 
   const circles = document.querySelectorAll('.circle');
   function tilt(x, y) {

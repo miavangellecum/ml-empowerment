@@ -279,14 +279,17 @@ body.theme-dark{ background:var(--ink); color:var(--cream); overflow-x:hidden; }
 .panel h3{ font-size:15px; margin:0 0 4px; }
 .panel .sub{ font-size:12px; opacity:0.6; margin-bottom:8px; }
 
-.orbit-field{ position:relative; height:230px; margin-top:8px; }
+.orbit-field{ position:relative; height:230px; margin-top:8px; overflow:hidden; }
 .bubble{
   position:absolute; border-radius:50%; display:flex; align-items:center; justify-content:center;
   flex-direction:column; text-align:center; cursor:pointer; color:var(--cream);
   transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease; user-select:none;
-  box-shadow:0 8px 18px rgba(0,0,0,0.25); text-decoration:none; border:1px solid rgba(244,237,226,0.25);
+  box-shadow:0 8px 18px rgba(0,0,0,0.25); text-decoration:none;
+  /* remove the visible light border; match the app background so overlaps read as a single surface */
+  border:3px solid var(--ink);
 }
-.bubble:hover, .bubble.active{ transform: scale(1.08); z-index:5; }
+/* Keep hover/active scale but let JS control z-index so clicked bubble is always brought to front */
+.bubble:hover, .bubble.active{ transform: scale(1.08); }
 .bubble .cat{ font-size:11px; opacity:0.9; font-weight:500; font-family:'Inter',sans-serif; }
 .bubble .amt{ font-size:15px; font-weight:700; }
 .bubble.small .amt{ font-size:11px; }

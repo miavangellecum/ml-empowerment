@@ -1,33 +1,39 @@
 // Talks to the FastAPI backend (app.py). Falls back to mock data if the
 // API isn't reachable yet, so the frontend is always demoable on its own.
 
-const API_BASE = "http://localhost:8000";
+// Use same-origin relative API base so frontend works when served by the backend
+const API_BASE = "";
 
 // Kept in sync with extraction/llm/extract.py's IRS_CATEGORIES list.
 // No icons by design — color + label carry the category instead.
+// Every category gets its own hue so the orbit bubbles are always visually
+// distinguishable — no two categories (including the fallbacks) share a
+// color. All hex values are hand-picked to sit in the same warm, muted,
+// low-saturation family as the --sage/--red/--mustard/--teal/--plum theme
+// variables, just extended out to 20 distinct swatches instead of 5.
 const CATEGORY_META = {
-  advertising:                      { icon: "", color: "var(--sage)" },
-  car_and_truck_expenses:           { icon: "", color: "var(--red)" },
-  commissions_and_fees:             { icon: "", color: "var(--mustard)" },
-  contract_labor:                   { icon: "", color: "var(--teal)" },
-  insurance:                        { icon: "", color: "var(--plum)" },
-  interest:                         { icon: "", color: "#A9A296" },
-  legal_and_professional_services:  { icon: "", color: "#C9A876" },
-  office_expense:                   { icon: "", color: "#5B7DB1" },
-  rent_or_lease:                    { icon: "", color: "#B1785B" },
-  repairs_and_maintenance:          { icon: "", color: "var(--sage)" },
-  supplies:                         { icon: "", color: "var(--red)" },
-  taxes_and_licenses:               { icon: "", color: "var(--mustard)" },
-  travel:                           { icon: "", color: "var(--teal)" },
-  meals:                            { icon: "", color: "var(--plum)" },
-  utilities:                        { icon: "", color: "#A9A296" },
-  wages:                            { icon: "", color: "#C9A876" },
-  other_expenses:                   { icon: "", color: "#A9A296" },
-  personal_non_deductible:          { icon: "", color: "#8C8477" },
+  advertising:                      { icon: "", color: "var(--sage)" },     // #7C9A79
+  car_and_truck_expenses:           { icon: "", color: "var(--red)" },      // #E8492D
+  commissions_and_fees:             { icon: "", color: "var(--mustard)" },  // #F0B93E
+  contract_labor:                   { icon: "", color: "var(--teal)" },     // #3E6E68
+  insurance:                        { icon: "", color: "var(--plum)" },     // #7A4B5C
+  interest:                         { icon: "", color: "#5B7DB1" },  // dusty blue
+  legal_and_professional_services:  { icon: "", color: "#C9A876" },  // brass
+  office_expense:                   { icon: "", color: "#6B8CAE" },  // slate blue
+  rent_or_lease:                    { icon: "", color: "#B1785B" },  // terracotta
+  repairs_and_maintenance:          { icon: "", color: "#8FA66B" },  // moss green
+  supplies:                         { icon: "", color: "#D46A4C" },  // burnt coral
+  taxes_and_licenses:               { icon: "", color: "#D9A441" },  // gold
+  travel:                           { icon: "", color: "#3E9E8F" },  // bright teal
+  meals:                            { icon: "", color: "#9A5A72" },  // wine
+  utilities:                        { icon: "", color: "#A97C50" },  // bronze
+  wages:                            { icon: "", color: "#B98B8B" },  // dusty rose
+  other_expenses:                   { icon: "", color: "#8C6E4B" },  // umber
+  personal_non_deductible:          { icon: "", color: "#6B5B95" },  // muted indigo
   // Fallbacks used elsewhere in this file when a category doesn't match
   // any of the above (e.g. an unmatched Plaid transaction's raw category).
-  uncategorized:                    { icon: "", color: "#A9A296" },
-  other:                            { icon: "", color: "#A9A296" },
+  uncategorized:                    { icon: "", color: "#8C7A66" },  // warm taupe
+  other:                            { icon: "", color: "#5E7A6B" },  // deep sage-grey
 };
 
 // Placeholder data shaped like the FastAPI /receipts response, used only

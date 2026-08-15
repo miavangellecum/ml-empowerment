@@ -8,6 +8,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>
+  /* Override any border/outline/shadow on orbit bubbles defined in
+     css/style.css — placed after that stylesheet's <link> so normal
+     cascade order also favors this, on top of the !important below. */
+  .orbit-field .bubble,
+  .orbit-field .bubble.small,
+  .orbit-field .bubble.active {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+</style>
 </head>
 <body class="theme-dark">
 
@@ -61,6 +73,7 @@
     <nav class="actionbar">
       <a href="receipts.html">My Receipts</a>
       <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+      <a href="reports.html">Reports</a>
       <a href="index.html" class="active">Dashboard</a>
     </nav>
 
@@ -128,26 +141,91 @@
         field.innerHTML = '';
         detail.innerHTML = `<span><span class="dot" style="background:var(--sage)"></span>Tap a bubble for details</span><span>—</span>`;
 
-        Object.entries(totals).forEach(([cat, amount], i)=>{
-          const meta = CATEGORY_META[cat] || CATEGORY_META.other;
+        // Build an entries array with computed sizes, largest first so big
+        // bubbles claim space before small ones are packed around them.
+        const entries = Object.entries(totals).map(([cat, amount], i) => {
           const share = grand ? amount/grand : 0;
           const size = Math.max(56, Math.round(140*Math.sqrt(share)*1.8));
+          return { cat, amount, meta: CATEGORY_META[cat] || CATEGORY_META.other, share, size, posIndex: i };
+        });
+        entries.sort((a,b) => b.size - a.size);
+
+        // --- Collision-aware layout -------------------------------------
+        // Fixed slot positions don't account for variable bubble sizes, so
+        // bigger bubbles can swallow their neighbors' spots. Instead: seed
+        // each bubble near a slot, then run a few relaxation passes that
+        // push apart any pair of circles whose distance is less than the
+        // sum of their radii (plus a small gap), clamping to the field
+        // bounds each pass so nothing escapes the container.
+        const rect = field.getBoundingClientRect();
+        const GAP = 6;
+        const positioned = entries.map((entry, i) => {
+          const pos = ORBIT_POSITIONS[i % ORBIT_POSITIONS.length];
+          function parsePercent(val, total) {
+            if (typeof val === 'string' && val.trim().endsWith('%')) return (parseFloat(val) / 100) * total;
+            const n = parseFloat(val);
+            return Number.isFinite(n) ? n : total/2;
+          }
+          return {
+            ...entry,
+            x: parsePercent(pos.left, rect.width),
+            y: parsePercent(pos.top, rect.height),
+          };
+        });
+
+        function clamp(p) {
+          const r = p.size/2;
+          p.x = Math.min(Math.max(p.x, r), Math.max(rect.width - r, r));
+          p.y = Math.min(Math.max(p.y, r), Math.max(rect.height - r, r));
+        }
+        positioned.forEach(clamp);
+
+        for (let pass = 0; pass < 60; pass++) {
+          let moved = false;
+          for (let i = 0; i < positioned.length; i++) {
+            for (let j = i+1; j < positioned.length; j++) {
+              const a = positioned[i], b2 = positioned[j];
+              const dx = b2.x - a.x, dy = b2.y - a.y;
+              let dist = Math.sqrt(dx*dx + dy*dy);
+              const minDist = a.size/2 + b2.size/2 + GAP;
+              if (dist < minDist) {
+                moved = true;
+                if (dist === 0) { dist = 0.01; }
+                const overlap = (minDist - dist) / 2;
+                const nx = dx / dist, ny = dy / dist;
+                a.x -= nx * overlap; a.y -= ny * overlap;
+                b2.x += nx * overlap; b2.y += ny * overlap;
+                clamp(a); clamp(b2);
+              }
+            }
+          }
+          if (!moved) break;
+        }
+        // ------------------------------------------------------------------
+
+        positioned.forEach((entry) => {
+          const { cat, amount, meta, share, size, x, y } = entry;
           const b = document.createElement('a');
           b.href = `receipts.html?cat=${cat}`;
           b.className = 'bubble' + (size<78 ? ' small':'');
           b.style.width = size+'px'; b.style.height = size+'px';
           b.style.background = meta.color;
-          // center the bubble at the percentage position so growth doesn't "leak" the bubble origin
-          const pos = ORBIT_POSITIONS[i % ORBIT_POSITIONS.length];
-          b.style.top = pos.top; b.style.left = pos.left;
+          b.style.setProperty('border', 'none', 'important');
+          b.style.setProperty('outline', 'none', 'important');
+          b.style.setProperty('box-shadow', 'none', 'important');
+
+          b.style.position = 'absolute';
+          b.style.top = y + 'px';
+          b.style.left = x + 'px';
           b.style.transform = 'translate(-50%, -50%)';
-          // make stacking predictable: smaller bubbles sit above larger ones
-          b.style.zIndex = String(10000 - Math.round(size));
-          // make the bubble content center and prevent overflow
+
+          // stacking: smaller bubbles (we're iterating small->large) should sit on top,
+          // but also include a size-based baseline z so larger ones don't cover small ones.
+          b.style.zIndex = String(15000 - Math.round(size));
+
           b.style.display = 'flex'; b.style.flexDirection = 'column'; b.style.justifyContent = 'center'; b.style.alignItems = 'center'; b.style.textAlign = 'center'; b.style.overflow = 'hidden';
           b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
 
-          // adapt font sizes to the bubble size so text doesn't leak out
           const amtEl = b.querySelector('.amt');
           const catEl = b.querySelector('.cat');
           if (amtEl) amtEl.style.fontSize = Math.max(11, Math.round(size/6)) + 'px';
@@ -159,8 +237,11 @@
             b.classList.add('active');
             detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
             // bring clicked bubble to front for clarity
-            b.style.zIndex = String(20000);
+            b.style.zIndex = String(30000);
+            // also move it to the end of the container so it renders above siblings in the same stacking context
+            try { field.appendChild(b); } catch (err) { /* ignore */ }
           });
+
           field.appendChild(b);
         });
       }
