@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spend — Reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* Page-specific only — everything else (body.theme-dark, .field/.circle,
+     .scene, .content, .topbar, .brand, .panel, .activity-row) already
+     lives in css/style.css. Don't redeclare it here. */
+  .score-ring-wrap{ display:flex; align-items:center; gap:18px; }
+  .score-ring{ flex-shrink:0; }
+  .score-ring text{ font-family:'Space Grotesk',sans-serif; font-weight:700; fill:var(--cream); }
+  .score-copy{ font-size:13px; opacity:0.7; line-height:1.5; }
+  .score-copy b{ display:block; color:var(--cream); font-size:15px; opacity:1; margin-bottom:2px; font-family:'Space Grotesk',sans-serif; }
+
+  .cat-row{ display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid rgba(244,237,226,0.08); }
+  .cat-row:last-child{ border-bottom:none; }
+  .cat-row .cat-name{ flex:1; font-size:13.5px; text-transform:capitalize; }
+  .cat-row .cat-bar-track{ flex:2; height:6px; border-radius:99px; background:rgba(244,237,226,0.1); overflow:hidden; }
+  .cat-row .cat-bar-fill{ height:100%; background:var(--sage); border-radius:99px; }
+  .cat-row .cat-amt{ width:76px; text-align:right; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; }
+
+  .flag-row{ font-size:13px; padding:10px 0; border-bottom:1px solid rgba(244,237,226,0.08); display:flex; justify-content:space-between; gap:10px; }
+  .flag-row:last-child{ border-bottom:none; }
+  .flag-row .flag-amt{ font-family:'Space Grotesk',sans-serif; font-weight:700; }
+  .empty-flag{ font-size:12.5px; opacity:0.5; padding:6px 0; }
+
+  .report-actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  .report-actions a, .report-actions button{
+    font-family:'Space Grotesk',sans-serif; font-size:12.5px; font-weight:600;
+    padding:10px 16px; border-radius:999px; border:1px solid rgba(244,237,226,0.2);
+    background:rgba(244,237,226,0.08); color:var(--cream); text-decoration:none; cursor:pointer;
+  }
+  .report-actions button:hover, .report-actions a:hover{ background:rgba(244,237,226,0.16); }
+  .report-actions button:disabled{ opacity:0.5; cursor:not-allowed; }
+
+  /* Rendered AI markdown — kept simple on purpose, see renderMarkdownLite() in this page's script */
+  .ai-report{ font-size:13.5px; line-height:1.6; }
+  .ai-report h3{ font-size:15px; margin:18px 0 8px; }
+  .ai-report h3:first-child{ margin-top:0; }
+  .ai-report ul{ margin:6px 0; padding-left:18px; }
+  .ai-report li{ margin-bottom:4px; }
+  .ai-report table{ width:100%; border-collapse:collapse; margin:10px 0; font-size:12.5px; }
+  .ai-report th{ text-align:left; opacity:0.6; font-weight:600; padding:6px 8px; border-bottom:1px solid rgba(244,237,226,0.15); }
+  .ai-report td{ padding:6px 8px; border-bottom:1px solid rgba(244,237,226,0.06); }
+  .ai-report p{ margin:8px 0; opacity:0.9; }
+</style>
+</head>
+<body class="theme-dark">
+
+<div class="field" id="field">
+  <div class="circle c1"></div>
+  <div class="circle c2"></div>
+  <div class="circle c3"></div>
+  <div class="circle c4"></div>
+  <div class="circle c5"></div>
+</div>
+
+<div class="scene">
+  <div class="content">
+
+    <div class="topbar">
+      <div class="brand">◐ Spend</div>
+    </div>
+
+    <div class="title-block">
+      <h1>Expense Report</h1>
+    </div>
+
+    <div class="panel">
+      <h3>Audit readiness</h3>
+      <div class="sub">Share of total spend with a receipt confirmed against a bank charge.</div>
+      <div class="score-ring-wrap" id="scoreWrap">
+        <div style="opacity:0.5; font-size:13px; padding:20px 0;">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Category breakdown</h3>
+      <div class="sub">Deductible amount by IRS Schedule C category.</div>
+      <div id="categoryList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">Loading…</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Audit flags</h3>
+      <div class="sub">Amount mismatches, missing documentation, and business-use items to verify.</div>
+      <div id="flagsList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">Loading…</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Full report</h3>
+      <div class="sub">The AI narrative report classifies unreceipted charges and writes it up — takes a few seconds.</div>
+      <div class="report-actions">
+        <button id="generateAiBtn" type="button">Generate AI report</button>
+        <a id="csvLink" href="#">Download CSV</a>
+      </div>
+      <div class="ai-report" id="aiReport"></div>
+    </div>
+
+  </div>
+</div>
+
+<nav class="actionbar">
+  <a href="receipts.html">My Receipts</a>
+  <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+  <a href="index.html">Dashboard</a>
+  <a href="reports.html" class="active">Reports</a>
+</nav>
+
+<script src="js/data.js"></script>
+<script>
+function scoreColor(pct) {
+  if (pct >= 80) return "var(--sage)";
+  if (pct >= 50) return "var(--mustard)";
+  return "var(--red)";
+}
+
+function renderScoreRing(pct) {
+  const r = 42, c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  const color = scoreColor(pct);
+  return `
+    <svg class="score-ring" width="110" height="110" viewBox="0 0 110 110">
+      <circle cx="55" cy="55" r="${r}" fill="none" stroke="rgba(244,237,226,0.12)" stroke-width="10"/>
+      <circle cx="55" cy="55" r="${r}" fill="none" stroke="${color}" stroke-width="10"
+        stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"
+        transform="rotate(-90 55 55)"/>
+      <text x="55" y="61" text-anchor="middle" font-size="22">${pct.toFixed(0)}%</text>
+    </svg>`;
+}
+
+function renderCategoryList(byCategory) {
+  const entries = Object.entries(byCategory).sort((a, b) => b[1].total_amount - a[1].total_amount);
+  if (!entries.length) return `<div class="empty-flag">No categorized expenses yet.</div>`;
+  return entries.map(([cat, stats]) => `
+    <div class="cat-row">
+      <div class="cat-name">${cat.replace(/_/g, ' ')}</div>
+      <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${stats.percent_of_total}%"></div></div>
+      <div class="cat-amt">$${stats.total_amount.toFixed(2)}</div>
+    </div>
+  `).join('');
+}
+
+function renderFlags(report) {
+  const flags = report.audit_flags;
+  const sections = [];
+
+  if (flags.anomalies.length) {
+    sections.push(`<div style="opacity:0.6; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin:10px 0 4px;">Amount mismatches</div>`);
+    flags.anomalies.forEach(a => {
+      sections.push(`<div class="flag-row"><span>${a.source} · ${a.date}</span><span class="flag-amt">$${a.amount.toFixed(2)}</span></div>`);
+    });
+  }
+
+  if (flags.large_unreceipted_transactions_over_75.length) {
+    sections.push(`<div style="opacity:0.6; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin:10px 0 4px;">Missing receipts (over $75)</div>`);
+    flags.large_unreceipted_transactions_over_75.forEach(u => {
+      sections.push(`<div class="flag-row"><span>${u.source} · ${u.date}</span><span class="flag-amt">$${u.amount.toFixed(2)}</span></div>`);
+    });
+  }
+
+  const businessUse = Object.keys(flags.business_use_verification_needed);
+  if (businessUse.length) {
+    sections.push(`<div style="opacity:0.6; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin:10px 0 4px;">Confirm business-use %</div>`);
+    businessUse.forEach(cat => {
+      const stats = flags.business_use_verification_needed[cat];
+      sections.push(`<div class="flag-row"><span>${cat.replace(/_/g, ' ')}</span><span class="flag-amt">$${stats.total_amount.toFixed(2)}</span></div>`);
+    });
+  }
+
+  if (!sections.length) return `<div class="empty-flag">Nothing flagged — looking clean.</div>`;
+  return sections.join('');
+}
+
+// Deliberately not a full markdown parser — just enough to render the
+// fixed report shape the LLM is asked to produce (## headers, | tables |,
+// - bullet lists, plain paragraphs). Good enough for this report, not
+// meant to be general-purpose.
+function renderMarkdownLite(md) {
+  const lines = md.split('\n');
+  let html = '';
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith('## ')) {
+      html += `<h3>${line.slice(3).trim()}</h3>`;
+      i++;
+    } else if (line.trim().startsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { tableLines.push(lines[i]); i++; }
+      const rows = tableLines
+        .map(l => l.split('|').map(c => c.trim()).filter((c, idx, arr) => !(idx === 0 && c === '') && !(idx === arr.length - 1 && c === '')))
+        .filter(cells => !cells.every(c => /^-+$/.test(c))); // drop the |---|---| separator row
+      if (rows.length) {
+        html += '<table><thead><tr>' + rows[0].map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+        rows.slice(1).forEach(r => { html += '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>'; });
+        html += '</tbody></table>';
+      }
+    } else if (line.trim().startsWith('- ')) {
+      const items = [];
+      while (i < lines.length && lines[i].trim().startsWith('- ')) { items.push(lines[i].trim().slice(2)); i++; }
+      html += '<ul>' + items.map(it => `<li>${it}</li>`).join('') + '</ul>';
+    } else if (line.trim() === '') {
+      i++;
+    } else {
+      html += `<p>${line}</p>`;
+      i++;
+    }
+  }
+  return html;
+}
+
+(async function () {
+  document.getElementById('csvLink').href = `${API_BASE}/reports/summary/csv`;
+
+  try {
+    const report = await fetchExpenseSummary();
+    document.getElementById('scoreWrap').innerHTML = `
+      ${renderScoreRing(report.audit_readiness_score_pct)}
+      <div class="score-copy">
+        <b>$${report.verified_amount.toFixed(2)} verified</b>
+        of $${report.total_expense_amount.toFixed(2)} total business spend.
+        ${report.counts.unreceipted_transactions} bank charge(s) still need a receipt.
+      </div>`;
+    document.getElementById('categoryList').innerHTML = renderCategoryList(report.by_category);
+    document.getElementById('flagsList').innerHTML = renderFlags(report);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('scoreWrap').innerHTML = `<div style="opacity:0.6; font-size:13px;">Couldn't load report — is the API running?</div>`;
+  }
+
+  document.getElementById('generateAiBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const out = document.getElementById('aiReport');
+    btn.disabled = true;
+    btn.textContent = 'Generating… (Bedrock call, a few seconds)';
+    out.innerHTML = '';
+    try {
+      const { report_markdown } = await fetchAIAuditReport();
+      out.innerHTML = renderMarkdownLite(report_markdown);
+    } catch (err) {
+      console.error(err);
+      out.innerHTML = `<p style="opacity:0.6;">Couldn't generate the report: ${err.message}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate AI report';
+    }
+  });
+
+  const circles = document.querySelectorAll('.circle');
+  function tilt(x, y) {
+    const px = x / window.innerWidth - 0.5;
+    const py = y / window.innerHeight - 0.5;
+    circles.forEach((c, i) => {
+      const depth = (i + 1) * 14;
+      c.style.transform = `translate(${px * depth}px, ${py * depth}px)`;
+    });
+  }
+  window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+})();
+</script>
+
+</body>
+</html>
