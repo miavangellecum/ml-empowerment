@@ -34,7 +34,7 @@ def init_db():
                 quantity DECIMAL DEFAULT 1,
                 unit_price DECIMAL,
                 total_price DECIMAL,
-                category TEXT DEFAULT 'other'
+                category TEXT DEFAULT 'other_expenses'
             )
         """)
 
@@ -64,6 +64,26 @@ def init_db():
                 date DATE,
                 pending BOOL DEFAULT false,
                 created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS plaid_accounts (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                item_id TEXT NOT NULL REFERENCES plaid_items(item_id),
+                account_id TEXT NOT NULL,
+                name TEXT,
+                official_name TEXT,
+                mask TEXT,
+                type TEXT,
+                subtype TEXT,
+                available_balance DECIMAL,
+                current_balance DECIMAL,
+                iso_currency_code TEXT,
+                unofficial_currency_code TEXT,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                UNIQUE (item_id, account_id)
             )
         """)
 
@@ -106,6 +126,29 @@ def init_db():
 
         cur.close()
 
+def derive_receipt_category(items: list[dict] | None) -> str:
+    """Return one category for the receipt from its line items.
+
+    The UI expects a single receipt-level category even though the database stores
+    categories per line item. If the receipt contains mixed categories, we fall back
+    to the generic business expense bucket instead of showing the wrong default.
+    """
+    categories = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        category = item.get("category")
+        if category:
+            categories.append(str(category).strip())
+
+    unique = {category.lower() for category in categories if category}
+    if not unique:
+        return "other_expenses"
+    if len(unique) == 1:
+        return next(iter(unique))
+    return "other_expenses"
+
+
 def save_receipt(receipt: dict, s3_url: str | None = None) -> str:
     """Inserts the receipt + its line items, embedding store_name for
     later vector matching against Plaid transactions. Returns the new
@@ -140,7 +183,7 @@ def save_receipt(receipt: dict, s3_url: str | None = None) -> str:
                 (
                     receipt_id, item["name"], item.get("quantity", 1),
                     item.get("unit_price"), item["total_price"],
-                    item.get("category", "other"),
+                    item.get("category", "other_expenses"),
                 ),
             )
         cur.close()
@@ -154,17 +197,31 @@ def get_receipts() -> list[dict]:
         cur.execute(
             """
             SELECT id, store_name, date, payment_method, currency,
-                   subtotal, tax, total, s3_url, created_at, category
+                   subtotal, tax, total, s3_url, created_at
             FROM receipts
             ORDER BY created_at DESC
             """
         )
         cols = [d.name for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+        for r in rows:
+            r["id"] = str(r["id"])
+            cur2 = conn.cursor()
+            cur2.execute(
+                "SELECT id, name, quantity, unit_price, total_price, category "
+                "FROM line_items WHERE receipt_id = %s",
+                (r["id"],),
+            )
+            item_cols = [d.name for d in cur2.description]
+            items = [dict(zip(item_cols, row)) for row in cur2.fetchall()]
+            for item in items:
+                item["id"] = str(item["id"])
+            r["items"] = items
+            r["category"] = derive_receipt_category(items)
+            cur2.close()
         cur.close()
 
-    for r in rows:
-        r["id"] = str(r["id"])
     return rows
 
 
@@ -196,6 +253,7 @@ def get_receipt(receipt_id: str) -> dict | None:
         receipt["items"] = [dict(zip(item_cols, r)) for r in cur.fetchall()]
         for item in receipt["items"]:
             item["id"] = str(item["id"])
+        receipt["category"] = derive_receipt_category(receipt["items"])
         cur.close()
 
     return receipt
