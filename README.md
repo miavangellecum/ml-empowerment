@@ -10,6 +10,8 @@ The core idea: an agent's memory isn't just a vector store bolted onto a chatbot
 
 Every small business owner or freelancer hits the same wall every April: a shoebox of receipts, a bank statement full of ambiguous line items ("SQ *THE GRILL HOUSE"), and no idea which of it is actually deductible. Spend automates the unglamorous but high-stakes part of that process — matching, categorizing, and flagging — while keeping a human in the loop for anything the agent isn't confident about, and keeping every intermediate decision inspectable for an actual audit.
 
+Expense categorization follows IRS Schedule C, Part II line items directly (Form 1040 Schedule C instructions, irs.gov), including the 50% meals deduction limitation — the categories in the extraction agent aren't invented, they map onto what a business owner would actually file under.
+
 ---
 
 ## Architecture
