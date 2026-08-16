@@ -1,12 +1,13 @@
 {
-  "name": "spend-frontend",
+  "name": "hackathon",
   "version": "1.0.0",
-  "description": "Frontend for the receipts/budgeting app",
-  "main": "js/server.js",
+  "description": "",
+  "main": "frontend/js/index.js",
   "scripts": {
-    "start": "node js/server.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "private": true,
   "dependencies": {
-    "express": "^4.22.2"
+    "multer": "^2.2.0"
   }
 }

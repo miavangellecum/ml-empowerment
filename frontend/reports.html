@@ -109,6 +109,15 @@
         <a id="csvLink" href="#">Download CSV</a>
       </div>
       <div class="ai-report" id="aiReport"></div>
+
+      <div id="followupBox" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid rgba(244,237,226,0.1);">
+        <div style="display:flex; gap:8px;">
+          <input id="followupInput" type="text" placeholder="Ask a follow-up, e.g. 'why is my audit score not higher?'"
+            style="flex:1; background:rgba(244,237,226,0.06); border:1px solid rgba(244,237,226,0.2); border-radius:8px; padding:9px 12px; color:var(--cream); font-family:'Space Grotesk',sans-serif; font-size:12.5px;">
+          <button id="followupBtn" type="button" style="font-family:'Space Grotesk',sans-serif; font-size:12.5px; font-weight:600; padding:9px 16px; border-radius:8px; border:1px solid rgba(244,237,226,0.2); background:rgba(244,237,226,0.08); color:var(--cream); cursor:pointer;">Ask</button>
+        </div>
+        <div id="followupAnswer" style="font-size:13px; opacity:0.9; margin-top:10px; line-height:1.5;"></div>
+      </div>
     </div>
 
   </div>
@@ -166,10 +175,11 @@ function renderFlags(report) {
     });
   }
 
-  if (flags.large_unreceipted_transactions_over_75.length) {
-    sections.push(`<div style="opacity:0.6; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin:10px 0 4px;">Missing receipts (over $75)</div>`);
-    flags.large_unreceipted_transactions_over_75.forEach(u => {
-      sections.push(`<div class="flag-row"><span>${u.source} · ${u.date}</span><span class="flag-amt">$${u.amount.toFixed(2)}</span></div>`);
+  if (flags.all_unreceipted_transactions.length) {
+    sections.push(`<div style="opacity:0.6; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin:10px 0 4px;">Missing receipts (${flags.all_unreceipted_transactions.length})</div>`);
+    flags.all_unreceipted_transactions.forEach(u => {
+      const priorityTag = u.over_threshold ? ' <span style="opacity:0.55;">· over $75</span>' : '';
+      sections.push(`<div class="flag-row"><span>${u.source} · ${u.date}${priorityTag}</span><span class="flag-amt">$${u.amount.toFixed(2)}</span></div>`);
     });
   }
 
@@ -258,6 +268,7 @@ function renderMarkdownLite(md) {
     try {
       const { report_markdown } = await fetchAIAuditReport();
       out.innerHTML = renderMarkdownLite(report_markdown);
+      document.getElementById('followupBox').style.display = 'block';
     } catch (err) {
       console.error(err);
       out.innerHTML = `<p style="opacity:0.6;">Couldn't generate the report: ${err.message}</p>`;
@@ -267,36 +278,31 @@ function renderMarkdownLite(md) {
     }
   });
 
-  // Download PDF: open a printable window with the rendered report and call print().
-  const downloadBtn = document.getElementById('downloadPdfBtn');
-  downloadBtn.addEventListener('click', () => {
-    const content = document.getElementById('aiReport').innerHTML;
-    if (!content.trim()) return alert('No report to download. Generate it first.');
-    const w = window.open('', '_blank');
-    const doc = w.document;
-    doc.open();
-    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Expense AI Report</title><link href="css/style.css" rel="stylesheet"></head><body style="background:#fff;color:#000;padding:24px;">`);
-    doc.write(`<div>${content}</div>`);
-    doc.write('</body></html>');
-    doc.close();
-    // Give the browser a moment to render then trigger print.
-    setTimeout(() => { try { w.focus(); w.print(); } catch (e) { console.error(e); alert('Unable to open print dialog.'); } }, 300);
-  });
+  document.getElementById('followupBtn').addEventListener('click', async () => {
+    const input = document.getElementById('followupInput');
+    const answerEl = document.getElementById('followupAnswer');
+    const question = input.value.trim();
+    if (!question) return;
 
-  // Enable the download button when the AI report is inserted.
-  const origRender = renderMarkdownLite;
-  // Monkeypatch: wrap renderMarkdownLite to enable the button after rendering
-  function renderMarkdownLiteAndEnable(md) {
-    const html = origRender(md);
-    // enable download if there's content
-    if (html && html.trim() !== '') {
-      downloadBtn.disabled = false;
-      downloadBtn.style.opacity = 1;
+    const btn = document.getElementById('followupBtn');
+    btn.disabled = true;
+    answerEl.textContent = 'Thinking…';
+    try {
+      const res = await fetch(`${API_BASE}/reports/summary/ai/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      const { answer } = await res.json();
+      answerEl.textContent = answer;
+    } catch (err) {
+      console.error(err);
+      answerEl.textContent = `Couldn't get an answer: ${err.message}`;
+    } finally {
+      btn.disabled = false;
     }
-    return html;
-  }
-  // Replace calls in this module by reassigning the name used above
-  renderMarkdownLite = renderMarkdownLiteAndEnable;
+  });
 
   const circles = document.querySelectorAll('.circle');
   function tilt(x, y) {

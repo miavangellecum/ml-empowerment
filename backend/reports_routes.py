@@ -3,10 +3,12 @@ import io
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from db.expenses import get_unified_ledger, get_expense_report, LARGE_TRANSACTION_THRESHOLD
 from db.reporting_agent import generate_audit_report
 from db.pdf_report import generate_expense_report_pdf
+from db.query_agent import ask
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -35,6 +37,17 @@ async def expense_summary_ai(start_date: str | None = None, end_date: str | None
     three-section report. One Bedrock call — use /summary if you just
     need the numbers for a UI."""
     return generate_audit_report(start_date, end_date)
+
+
+class AIReportQuestionRequest(BaseModel):
+    question: str
+
+
+@router.post("/summary/ai/ask")
+async def expense_summary_ai_ask(req: AIReportQuestionRequest):
+    """Ask a follow-up question about the generated AI report using the
+    same financial query agent used elsewhere in the app."""
+    return ask(req.question)
 
 
 @router.get("/summary/pdf")

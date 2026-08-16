@@ -2,7 +2,7 @@
 // API isn't reachable yet, so the frontend is always demoable on its own.
 
 // Use same-origin relative API base so frontend works when served by the backend
-const API_BASE = "";
+const API_BASE = "http://localhost:8000";
 
 // Kept in sync with extraction/llm/extract.py's IRS_CATEGORIES list.
 // No icons by design — color + label carry the category instead.
