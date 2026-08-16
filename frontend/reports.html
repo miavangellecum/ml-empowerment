@@ -105,6 +105,7 @@
       <div class="sub">The AI narrative report classifies unreceipted charges and writes it up — takes a few seconds.</div>
       <div class="report-actions">
         <button id="generateAiBtn" type="button">Generate AI report</button>
+        <a id="pdfLink" href="#">Download PDF</a>
         <a id="csvLink" href="#">Download CSV</a>
       </div>
       <div class="ai-report" id="aiReport"></div>
@@ -187,8 +188,12 @@ function renderFlags(report) {
 
 // Deliberately not a full markdown parser — just enough to render the
 // fixed report shape the LLM is asked to produce (## headers, | tables |,
-// - bullet lists, plain paragraphs). Good enough for this report, not
-// meant to be general-purpose.
+// - bullet lists, plain paragraphs, **bold**). Good enough for this
+// report, not meant to be general-purpose.
+function inlineMd(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>');
+}
+
 function renderMarkdownLite(md) {
   const lines = md.split('\n');
   let html = '';
@@ -197,7 +202,7 @@ function renderMarkdownLite(md) {
     const line = lines[i];
 
     if (line.startsWith('## ')) {
-      html += `<h3>${line.slice(3).trim()}</h3>`;
+      html += `<h3>${inlineMd(line.slice(3).trim())}</h3>`;
       i++;
     } else if (line.trim().startsWith('|')) {
       const tableLines = [];
@@ -206,18 +211,18 @@ function renderMarkdownLite(md) {
         .map(l => l.split('|').map(c => c.trim()).filter((c, idx, arr) => !(idx === 0 && c === '') && !(idx === arr.length - 1 && c === '')))
         .filter(cells => !cells.every(c => /^-+$/.test(c))); // drop the |---|---| separator row
       if (rows.length) {
-        html += '<table><thead><tr>' + rows[0].map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
-        rows.slice(1).forEach(r => { html += '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>'; });
+        html += '<table><thead><tr>' + rows[0].map(c => `<th>${inlineMd(c)}</th>`).join('') + '</tr></thead><tbody>';
+        rows.slice(1).forEach(r => { html += '<tr>' + r.map(c => `<td>${inlineMd(c)}</td>`).join('') + '</tr>'; });
         html += '</tbody></table>';
       }
     } else if (line.trim().startsWith('- ')) {
       const items = [];
       while (i < lines.length && lines[i].trim().startsWith('- ')) { items.push(lines[i].trim().slice(2)); i++; }
-      html += '<ul>' + items.map(it => `<li>${it}</li>`).join('') + '</ul>';
+      html += '<ul>' + items.map(it => `<li>${inlineMd(it)}</li>`).join('') + '</ul>';
     } else if (line.trim() === '') {
       i++;
     } else {
-      html += `<p>${line}</p>`;
+      html += `<p>${inlineMd(line)}</p>`;
       i++;
     }
   }
@@ -226,6 +231,7 @@ function renderMarkdownLite(md) {
 
 (async function () {
   document.getElementById('csvLink').href = `${API_BASE}/reports/summary/csv`;
+  document.getElementById('pdfLink').href = `${API_BASE}/reports/summary/pdf`;
 
   try {
     const report = await fetchExpenseSummary();

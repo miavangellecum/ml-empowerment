@@ -2,21 +2,24 @@
 Unified ledger + expense report. All numbers here are computed in plain
 Python/SQL — deliberately, so that db/reporting_agent.py (the LLM layer)
 never has to do arithmetic. It only narrates and classifies; it never
-computes a dollar figure or a percentage.
+computes a dollar figure.
 
-Proof-status taxonomy (mirrors the accounting-assistant system prompt):
+Deduction rates and the non-deductible flag come from the tax_rules table
+(db/tax_rules.py) rather than hardcoded constants — change a rate there
+and this report reflects it immediately, no redeploy.
+
+Proof-status taxonomy:
   verified       receipt with a confirmed bank match, amounts within 2%
   anomaly        receipt with a confirmed bank match, amounts differ >2%
   pending_proof  receipt with no confirmed bank match, OR a bank charge
                  with no receipt on file (see `missing_side`)
 """
 from db.cockroach import get_conn
+from db.tax_rules import get_tax_rules, get_tax_rules_map
 
-NON_DEDUCTIBLE_CATEGORIES = {"personal_non_deductible"}
-PARTIALLY_DEDUCTIBLE = {"meals": 0.5}
 BUSINESS_USE_VERIFICATION_CATEGORIES = {"meals", "travel", "car_and_truck_expenses"}
 AMOUNT_MATCH_TOLERANCE_PCT = 0.02   # the "within 2%" verified/anomaly cutoff
-LARGE_TRANSACTION_THRESHOLD = 75.0  # IRS documentation-threshold rule of thumb
+LARGE_TRANSACTION_THRESHOLD = 75.0  # general IRS documentation-threshold rule of thumb; not category-specific
 
 
 def get_unified_ledger(start_date: str | None = None, end_date: str | None = None,
@@ -104,11 +107,12 @@ def get_unified_ledger(start_date: str | None = None, end_date: str | None = Non
 
 def get_expense_report(start_date: str | None = None, end_date: str | None = None) -> dict:
     ledger = get_unified_ledger(start_date, end_date)
+    tax_rules = get_tax_rules_map()  # {category: {deduction_rate, requires_receipt, ...}}
 
     by_category: dict[str, dict] = {}
     total_deductible = 0.0
     total_non_deductible = 0.0
-    total_expense_amount = 0.0   # every dollar seen, receipted or not — denominator for audit readiness
+    total_expense_amount = 0.0
     verified_amount = 0.0
     anomaly_rows, unreceipted_rows, pending_receipt_rows = [], [], []
 
@@ -129,12 +133,11 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
         if row["origin"] == "transaction_only":
             continue  # not yet categorizable with confidence — left to the LLM layer as NEEDS_REVIEW
 
-        deductible_amount = amount
-        if category in NON_DEDUCTIBLE_CATEGORIES:
-            deductible_amount = 0.0
+        rule = tax_rules.get(category)
+        deduction_rate = rule["deduction_rate"] if rule else 1.0  # unknown category: treat as fully deductible rather than silently dropping it
+        deductible_amount = amount * deduction_rate
+        if deduction_rate == 0.0:
             total_non_deductible += amount
-        elif category in PARTIALLY_DEDUCTIBLE:
-            deductible_amount = amount * PARTIALLY_DEDUCTIBLE[category]
         total_deductible += deductible_amount
 
         bucket = by_category.setdefault(category, {"total_amount": 0.0, "deductible_amount": 0.0, "count": 0})
@@ -143,12 +146,15 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
         bucket["count"] += 1
 
     total_category_spend = sum(b["total_amount"] for b in by_category.values())
-    for stats in by_category.values():
+    for cat, stats in by_category.items():
         stats["percent_of_total"] = round(
             (stats["total_amount"] / total_category_spend * 100) if total_category_spend else 0.0, 2
         )
         stats["total_amount"] = round(stats["total_amount"], 2)
         stats["deductible_amount"] = round(stats["deductible_amount"], 2)
+        rule = tax_rules.get(cat)
+        stats["deduction_rate"] = rule["deduction_rate"] if rule else 1.0
+        stats["rule_description"] = rule["rule_description"] if rule else None
 
     audit_readiness_score = round(
         (verified_amount / total_expense_amount * 100) if total_expense_amount else 0.0, 2
@@ -186,12 +192,21 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
             "large_unreceipted_transactions_over_75": large_unreceipted,
             "business_use_verification_needed": business_use_categories,
         },
-        # Raw rows the LLM layer needs to classify (unreceipted, still 'uncategorized').
-        # Deliberately NOT included in by_category — an uncategorized amount shouldn't
-        # silently count toward any IRS category total until a human/LLM assigns one.
         "needs_review_rows": [
             {"row_id": r["row_id"], "date": str(r["date"]), "source": r["source"],
              "description": r["description"], "amount": round(r["amount"], 2)}
             for r in unreceipted_rows
         ],
+        # NEW: the actual itemized rows, one per receipt line item or
+        # unreceipted charge, each with its real date. This is what
+        # db/reporting_agent.py's Section 2 table should be built from —
+        # by_category has no per-row dates to give it, which was the root
+        # cause of dates going missing in the generated report.
+        "ledger_rows": [
+            {"date": str(r["date"]), "source": r["source"], "description": r["description"],
+             "amount": round(r["amount"], 2), "category": r["category"],
+             "proof_status": r["proof_status"], "origin": r["origin"]}
+            for r in ledger
+        ],
+        "tax_rules": get_tax_rules(),
     }
