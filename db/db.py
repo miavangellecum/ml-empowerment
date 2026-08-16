@@ -5,6 +5,7 @@ app.py's call sites barely change — just the import.
 """
 from db.cockroach import get_conn
 from db.embeddings import EMBEDDING_DIM, embed_text, to_vector_literal
+from backend.aws_clients import get_presigned_url  # add this import
 
 def init_db():
     with get_conn() as conn:
@@ -125,9 +126,9 @@ def init_db():
             )
         """)
 
-        # Vector indexes power the nearest-neighbor lookups in matcher.py.
+        # Vector indexes power the nearest-neighbour lookups in matcher.py.
         # Requires CockroachDB v25.2+ with the vector index feature enabled
-        # (SET CLUSTER SETTING feature.vector_index.enabled = true;).
+        # (SET CLUSTER SETTING feature.vector_index.enabled = true;)
         for stmt in (
             "CREATE VECTOR INDEX IF NOT EXISTS receipts_store_embedding_idx "
             "ON receipts (store_embedding)",
@@ -165,7 +166,6 @@ def derive_receipt_category(items: list[dict] | None) -> str:
     if len(unique) == 1:
         return next(iter(unique))
     return "other_expenses"
-
 
 def save_receipt(receipt: dict, s3_url: str | None = None) -> str:
     """Inserts the receipt + its line items, embedding store_name for
@@ -208,7 +208,6 @@ def save_receipt(receipt: dict, s3_url: str | None = None) -> str:
 
     return str(receipt_id)
 
-
 def get_receipts() -> list[dict]:
     with get_conn() as conn:
         cur = conn.cursor()
@@ -225,6 +224,7 @@ def get_receipts() -> list[dict]:
 
         for r in rows:
             r["id"] = str(r["id"])
+            r["s3_url"] = _presign(r["s3_url"])  # add this line
             cur2 = conn.cursor()
             cur2.execute(
                 "SELECT id, name, quantity, unit_price, total_price, category "
@@ -261,6 +261,7 @@ def get_receipt(receipt_id: str) -> dict | None:
         cols = [d.name for d in cur.description]
         receipt = dict(zip(cols, row))
         receipt["id"] = str(receipt["id"])
+        receipt["s3_url"] = _presign(receipt["s3_url"])  # add this line
 
         cur.execute(
             "SELECT id, name, quantity, unit_price, total_price, category "
@@ -275,3 +276,15 @@ def get_receipt(receipt_id: str) -> dict | None:
         cur.close()
 
     return receipt
+
+def _presign(s3_url: str | None) -> str | None:
+    """Converts a stored s3://bucket/key URL into a short-lived HTTPS
+    URL the frontend can actually load. Presigning happens on read,
+    not on write, since presigned URLs expire and receipts are stored
+    long-term."""
+    if not s3_url:
+        return None
+    if not s3_url.startswith("s3://"):
+        return s3_url  # already a usable URL, or empty — don't touch it
+    key = "/".join(s3_url.split("/")[3:])
+    return get_presigned_url(key)

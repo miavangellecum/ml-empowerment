@@ -11,6 +11,7 @@ from db.db import save_receipt, get_receipts, get_receipt, init_db
 from db.matcher import match_receipt
 from db.tax_rules import init_tax_rules
 from backend.aws_clients import upload_file_to_s3
+from backend.aws_clients import get_presigned_url
 
 from backend.plaid_routes import router as plaid_router
 from backend.matches_routes import router as matches_router
@@ -92,9 +93,20 @@ async def extract_receipt(file: UploadFile = File(...)):
             os.remove(temp_path)
 
 
-@app.get("/receipts")
-async def get_receipts_route():
-    return get_receipts()
+def _to_s3_key(s3_url: str) -> str:
+    # storage may hold "s3://bucket/receipts/xxx.jpg" — strip to the key
+    if s3_url.startswith("s3://"):
+        return "/".join(s3_url.split("/")[3:])
+    return s3_url
+
+@app.get("/receipts/{receipt_id}")
+async def get_receipt_route(receipt_id: str):
+    receipt = get_receipt(receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    if receipt.get("s3_url"):
+        receipt["s3_url"] = get_presigned_url(_to_s3_key(receipt["s3_url"]))
+    return receipt
 
 
 @app.get("/receipts/{receipt_id}")
