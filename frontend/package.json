@@ -2,9 +2,9 @@
   "name": "spend-frontend",
   "version": "1.0.0",
   "description": "Frontend for the receipts/budgeting app",
-  "main": "server.js",
+  "main": "js/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node js/server.js"
   },
   "dependencies": {
     "express": "^4.22.2"

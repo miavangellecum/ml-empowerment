@@ -4,11 +4,11 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, "public")));
+const PUBLIC_DIR = path.join(__dirname, "..");  // frontend/, not frontend/js/public
+app.use(express.static(PUBLIC_DIR));
 
-// Fallback: any unknown route serves the dashboard (keeps things simple for now)
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
 app.listen(PORT, () => {
