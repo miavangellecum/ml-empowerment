@@ -28,9 +28,18 @@ def get_image_path(input_path: str) -> str:
         return convert_pdf_to_png(input_path)
     return input_path
 
-def extract_text(image_path: str) -> list[str]:
+def extract_text(image_path: str) -> tuple[list[str], float]:
+    """
+    Returns (line_texts, mean_confidence).
+    mean_confidence is the average PaddleOCR recognition score across
+    all detected lines, 0.0-1.0. Low confidence signals a faded,
+    skewed, or handwritten receipt that OCR struggled with.
+    """
     image_path = get_image_path(image_path)
     result = ocr.predict(image_path)
     for res in result:
-        return res["rec_texts"]
-    return []
+        texts = res["rec_texts"]
+        scores = res.get("rec_scores", [])
+        mean_conf = sum(scores) / len(scores) if scores else 0.0
+        return texts, mean_conf
+    return [], 0.0

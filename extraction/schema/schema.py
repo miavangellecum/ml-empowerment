@@ -22,7 +22,8 @@ class Receipt(BaseModel):
     items: List[LineItem] = Field(default_factory=list)
     subtotal: Optional[float] = Field(default=None, description="Total excluding VAT")
     vat_total: Optional[float] = Field(default=None, description="Total VAT/BTW amount")
-
+    extraction_method: str = "ocr"  # "ocr" or "vision_fallback"
+    
     # Made optional (was `total: float`, required) because the Bedrock
     # structured-output call sometimes omits it on documents without an
     # obvious single "total due" line (e.g. utility bills paid by direct
