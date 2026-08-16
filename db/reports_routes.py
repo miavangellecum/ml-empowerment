@@ -8,6 +8,9 @@ from db.expenses import get_unified_ledger, get_expense_report, LARGE_TRANSACTIO
 from db.reporting_agent import generate_audit_report
 from db.pdf_report import generate_expense_report_pdf
 
+from pydantic import BaseModel
+
+
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
@@ -105,4 +108,23 @@ async def expense_summary_csv(start_date: str | None = None, end_date: str | Non
         buffer,
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+
     )
+
+# --- backend/reports_routes.py additions ---
+
+class FollowupQuestion(BaseModel):
+    question: str
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+@router.post("/summary/ai/ask")
+async def expense_summary_ai_ask(payload: FollowupQuestion):
+    """Answers a free-form question about the report, grounded in the same
+    DATA the narrative report used — one more Bedrock call, scoped so it
+    can't invent numbers outside what /summary already computed."""
+    answer = answer_followup_question(
+        payload.question, payload.start_date, payload.end_date
+    )
+    return {"answer": answer}

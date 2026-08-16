@@ -99,3 +99,28 @@ def generate_audit_report(start_date: str | None = None, end_date: str | None = 
     ])
 
     return {"report_markdown": response.content, "data": data}
+
+
+
+# --- addition to db/reporting_agent.py ---
+
+FOLLOWUP_SYSTEM_PROMPT_TEMPLATE = """You are the same financial controller assistant that produced the audit report below. Answer the user's follow-up question using ONLY the numbers in DATA — never recompute, estimate, or invent a figure that isn't already present in DATA. If the question can't be answered from DATA, say so plainly rather than guessing. Keep the answer to 2-4 sentences, conversational but precise.
+Target IRS Schedule C categories: {categories}
+Reporting period: {period}
+"""
+
+def answer_followup_question(question: str, start_date: str | None = None, end_date: str | None = None) -> str:
+    data = get_expense_report(start_date, end_date)
+    period = f"{start_date or 'inception'} to {end_date or 'present'}"
+
+    system_prompt = FOLLOWUP_SYSTEM_PROMPT_TEMPLATE.format(
+        categories=", ".join(IRS_CATEGORIES),
+        period=period,
+    )
+
+    response = _llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=f"DATA:\n{json.dumps(data, indent=2)}\n\nQuestion: {question}"),
+    ])
+
+    return response.content

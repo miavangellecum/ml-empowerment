@@ -165,6 +165,14 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
         for r in unreceipted_rows if r["amount"] > LARGE_TRANSACTION_THRESHOLD
     ]
 
+    all_unreceipted = [
+        {
+            "date": str(r["date"]), "source": r["source"], "amount": round(r["amount"], 2),
+            "over_threshold": r["amount"] > LARGE_TRANSACTION_THRESHOLD,
+        }
+        for r in unreceipted_rows
+    ]
+
     business_use_categories = {
         cat: stats for cat, stats in by_category.items() if cat in BUSINESS_USE_VERIFICATION_CATEGORIES
     }
@@ -190,6 +198,7 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
                 for r in anomaly_rows
             ],
             "large_unreceipted_transactions_over_75": large_unreceipted,
+            "all_unreceipted_transactions": all_unreceipted,  # NEW
             "business_use_verification_needed": business_use_categories,
         },
         "needs_review_rows": [
