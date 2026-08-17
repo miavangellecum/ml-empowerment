@@ -1,23 +1,17 @@
+import os
+import base64
 from extraction.schema.schema import Receipt
 from langchain_aws import ChatBedrock
 from langchain_core.messages import HumanMessage
-from pydantic import ValidationError  # was missing — the retry path would have crashed
-import base64
-import os
+from pydantic import ValidationError
 
 llm = ChatBedrock(
-    model_id=os.getenv("BEDROCK_MODEL_ID"),
-    region_name=os.getenv("AWS_REGION"),
+    model_id=os.getenv("BEDROCK_MODEL_ID", "eu.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    region_name=os.getenv("AWS_REGION", "eu-central-1"),
     model_kwargs={"temperature": 0},
 )
 structured_llm = llm.with_structured_output(Receipt)
 
-
-OCR_CONFIDENCE_THRESHOLD = 0.75  # TODO: tune against real test receipts
-
-# IRS Schedule C, Part II expense line items (the categories a sole
-# proprietor / small business actually files under). Keeping this list in
-# one place so the extraction prompt and the expense report line up.
 IRS_CATEGORIES = [
     "advertising",
     "car and truck expenses",
@@ -32,11 +26,11 @@ IRS_CATEGORIES = [
     "supplies",
     "taxes and licenses",
     "travel",
-    "meals",  # only 50% deductible — flagged separately in the report, not folded into "travel"
+    "meals",
     "utilities",
     "wages",
     "other expenses",
-    "personal non deductible",  # explicitly NOT a business expense — keeps personal spend out of the deduction totals instead of forcing it into "other"
+    "personal non deductible",
 ]
 
 _CATEGORY_INSTRUCTIONS = f"""Categorize each line item into exactly one of these IRS Schedule C expense categories: {", ".join(IRS_CATEGORIES)}.
@@ -47,37 +41,22 @@ _CATEGORY_INSTRUCTIONS = f"""Categorize each line item into exactly one of these
 If you cannot find a specific field's value, do your best estimate from context (e.g. sum of line items), and only omit it if truly absent.
 Always include a numeric 'total' value — if there is no explicit total, sum the line items."""
 
-def parse_receipt(ocr_texts: list[str], ocr_confidence: float, image_path: str) -> Receipt:
-    """
-    Structures a receipt into the Receipt schema.
-    Uses OCR'd text when confidence is high (cheap, fast).
-    Falls back to sending the image directly to Claude's vision input
-    when OCR confidence is low — layout and spacing that OCR flattens
-    away often make faded or handwritten receipts readable to Claude
-    even when the OCR text itself is garbage.
-    """
-    if ocr_confidence >= OCR_CONFIDENCE_THRESHOLD:
-        return _parse_from_text(ocr_texts)
+def parse_receipt(image_path: str) -> Receipt:
+    """Directly parses receipt images/PDFs into structured data using Claude 3.5 Sonnet Vision."""
+    ext = image_path.lower()
+    if ext.endswith(".png"):
+        media_type = "image/png"
+    elif ext.endswith(".pdf"):
+        media_type = "application/pdf"
+    elif ext.endswith(".webp"):
+        media_type = "image/webp"
     else:
-        return _parse_from_image(image_path)
+        media_type = "image/jpeg"
 
-def _parse_from_text(ocr_texts: list[str]) -> Receipt:
-    ocr_text = "\n".join(ocr_texts)
-    prompt = f"""You are extracting structured data from a receipt/invoice that was read via OCR, for a small business owner's tax recordkeeping.
-The text below may be out of order since OCR doesn't preserve layout perfectly.
-
-{_CATEGORY_INSTRUCTIONS}
-
-Now extract structured data from this OCR text:
-{ocr_text}
-"""
-    return _invoke_with_retry(prompt)
-
-def _parse_from_image(image_path: str) -> Receipt:
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-    prompt_text = f"""You are looking at a photo of a receipt/invoice for a small business owner's tax recordkeeping. OCR on this image produced low-confidence results, likely due to fading, skew, or handwriting — read the image directly instead.
+    prompt_text = f"""You are analyzing a photo or PDF of a receipt/invoice for a small business owner's tax recordkeeping. Read the document directly and extract structured data.
 
 {_CATEGORY_INSTRUCTIONS}"""
 
@@ -88,14 +67,13 @@ def _parse_from_image(image_path: str) -> Receipt:
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": "image/jpeg",  # adjust if you also accept png
+                    "media_type": media_type,
                     "data": image_b64,
                 },
             },
         ]
     )
     return _invoke_with_retry([message])
-
 
 def _invoke_with_retry(prompt):
     try:
@@ -105,6 +83,5 @@ def _invoke_with_retry(prompt):
         if isinstance(prompt, str):
             return structured_llm.invoke(prompt + retry_note)
         else:
-            # image message case — append the note as an extra text block
             prompt[0].content.append({"type": "text", "text": retry_note})
             return structured_llm.invoke(prompt)

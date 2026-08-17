@@ -6,12 +6,11 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from extraction.extraction import process_receipt
+from extraction.llm.extract import parse_receipt
 from db.db import save_receipt, get_receipts, get_receipt, init_db
 from db.matcher import match_receipt
 from db.tax_rules import init_tax_rules
-from backend.aws_clients import upload_file_to_s3
-from backend.aws_clients import get_presigned_url
+from backend.aws_clients import upload_file_to_s3, get_presigned_url
 
 from backend.plaid_routes import router as plaid_router
 from backend.matches_routes import router as matches_router
@@ -29,13 +28,8 @@ app.include_router(matches_router)
 app.include_router(reports_router)
 app.include_router(agent_router)
 
-# Keep in sync with MAX_UPLOAD_MB in frontend/scan.html. Without this,
-# a large receipt photo/PDF would silently sail past OCR (PaddleOCR/pdfium
-# on a huge image can take minutes or exhaust memory) and the request would
-# just hang with no feedback to the user.
 MAX_UPLOAD_MB = 15
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
-
 
 @app.post("/extract")
 async def extract_receipt(file: UploadFile = File(...)):
@@ -68,7 +62,8 @@ async def extract_receipt(file: UploadFile = File(...)):
         s3_key = f"receipts/{file.filename}"
         s3_url = upload_file_to_s3(temp_path, s3_key)
 
-        receipt = process_receipt(temp_path)  # returns Pydantic model
+        # Direct LLM Vision extraction via Bedrock
+        receipt = parse_receipt(temp_path)
         receipt_dict = receipt.model_dump()
 
         receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
@@ -84,17 +79,15 @@ async def extract_receipt(file: UploadFile = File(...)):
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise
-    except Exception:
+    except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        raise HTTPException(status_code=400, detail="Could not process the receipt.")
+        raise HTTPException(status_code=400, detail=f"Could not process the receipt: {str(e)}")
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-
 def _to_s3_key(s3_url: str) -> str:
-    # storage may hold "s3://bucket/receipts/xxx.jpg" — strip to the key
     if s3_url.startswith("s3://"):
         return "/".join(s3_url.split("/")[3:])
     return s3_url
@@ -108,19 +101,5 @@ async def get_receipt_route(receipt_id: str):
         receipt["s3_url"] = get_presigned_url(_to_s3_key(receipt["s3_url"]))
     return receipt
 
-
-@app.get("/receipts/{receipt_id}")
-async def get_receipt_route(receipt_id: str):
-    receipt = get_receipt(receipt_id)
-    if not receipt:
-        raise HTTPException(status_code=404, detail="Receipt not found")
-    return receipt
-
-
-# Mounted LAST, deliberately — Starlette matches routes in registration
-# order, so every explicit route above (including everything pulled in via
-# include_router) is checked before ever falling through to this catch-all
-# static-file mount. If API routes ever start returning odd 403/404s after
-# a future merge touches this file, check this mount is still the very
-# last line — that ordering is load-bearing, not stylistic.
+# Static files mount must remain last
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
