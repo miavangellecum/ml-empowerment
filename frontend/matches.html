@@ -63,7 +63,10 @@
     <div class="panel">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
         <h3 style="margin:0;">Pending review</h3>
-        <button id="toggleUnverifiedBtn">Show unverified transactions</button>
+        <div style="display:flex; gap:8px;">
+          <button id="toggleUnverifiedBtn">Show unverified transactions</button>
+          <button id="viewAllTxnsLocalBtn">View all transactions</button>
+        </div>
       </div>
       <div class="sub">Confirming a correct match — or rejecting a wrong one — is what moves your audit readiness score. See <a href="reports.html" style="color:var(--cream);">Reports</a> for the score itself.</div>
       <div id="matchList"><div style="opacity:0.5; font-size:13px; padding:20px 0;">Loading…</div></div>
@@ -284,6 +287,22 @@ document.addEventListener('click', async (e) => {
     } else {
       container.style.display = 'none';
       btn.textContent = 'Show unverified transactions';
+    }
+  }
+
+  if (e.target && e.target.id === 'viewAllTxnsLocalBtn') {
+    const btn = e.target;
+    const panel = document.getElementById('allTxnsPanel');
+    if (panel.style.display === 'none' || !panel.style.display) {
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      panel.style.display = 'block';
+      if (!__allLoaded) await renderAllTransactions();
+      btn.textContent = 'Hide all transactions';
+      btn.disabled = false;
+    } else {
+      panel.style.display = 'none';
+      btn.textContent = 'View all transactions';
     }
   }
 

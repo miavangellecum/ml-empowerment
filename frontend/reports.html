@@ -245,16 +245,26 @@ function renderMarkdownLite(md) {
 
   try {
     const report = await fetchExpenseSummary();
-    document.getElementById('scoreWrap').innerHTML = `
-      ${renderScoreRing(report.audit_readiness_score_pct)}
-      <div class="score-copy">
-        <b>$${report.verified_amount.toFixed(2)} verified</b>
-        of $${report.total_expense_amount.toFixed(2)} total business spend.
-        ${report.counts.unreceipted_transactions} bank charge(s) still need a receipt.
-        ${report.counts.pending_proof_receipts > 0 ? `<a href="matches.html" style="color:var(--sage); display:inline-block; margin-top:6px;">${report.counts.pending_proof_receipts} match(es) awaiting your review — confirm to raise this score →</a>` : ''}
-      </div>`;
-    document.getElementById('categoryList').innerHTML = renderCategoryList(report.by_category);
-    document.getElementById('flagsList').innerHTML = renderFlags(report);
+  // Also fetch matches overview to get accurate pending match count
+  let pendingMatches = 0;
+  try {
+    const mRes = await fetch(`${API_BASE}/matches/overview`);
+    if (mRes.ok) {
+      const mo = await mRes.json();
+      pendingMatches = mo.matches_pending_review || mo.matches_pending_review === 0 ? mo.matches_pending_review : (mo.matches_pending_review ?? mo.pending_review ?? 0);
+    }
+  } catch (e) { console.warn('Failed to load matches overview', e); }
+
+  document.getElementById('scoreWrap').innerHTML = `
+    ${renderScoreRing(report.audit_readiness_score_pct)}
+    <div class="score-copy">
+      <b>$${report.verified_amount.toFixed(2)} verified</b>
+      of $${report.total_expense_amount.toFixed(2)} total business spend.
+      ${report.counts.unreceipted_transactions} bank charge(s) still need a receipt.
+      ${pendingMatches > 0 ? `<a href="matches.html" style="color:var(--sage); display:inline-block; margin-top:6px;">${pendingMatches} match(es) awaiting your review — confirm to raise this score →</a>` : ''}
+    </div>`;
+  document.getElementById('categoryList').innerHTML = renderCategoryList(report.by_category);
+  document.getElementById('flagsList').innerHTML = renderFlags(report);
   } catch (err) {
     console.error(err);
     document.getElementById('scoreWrap').innerHTML = `<div style="opacity:0.6; font-size:13px;">Couldn't load report — is the API running?</div>`;
