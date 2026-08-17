@@ -31,6 +31,14 @@
   .match-actions button:disabled{ opacity:0.4; cursor:not-allowed; }
   .receipt-thumb{ display:inline-block; font-size:11px; opacity:0.6; margin-top:2px; text-decoration:underline; color:var(--cream); }
   .empty-state{ text-align:center; padding:40px 20px; opacity:0.6; font-size:13.5px; }
+
+  /* Unverified transactions list */
+  .txn-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-radius:10px; background:rgba(244,237,226,0.03); border:1px solid rgba(244,237,226,0.06); margin-bottom:8px; }
+  .txn-store{ font-weight:600; font-family:'Space Grotesk',sans-serif; }
+  .txn-amt{ opacity:0.85; }
+  .txn-date{ font-size:12px; opacity:0.6; }
+  .date-header{ font-size:13px; margin:14px 0 8px; opacity:0.8; }
+  #toggleUnverifiedBtn{ font-family:'Space Grotesk',sans-serif; font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(244,237,226,0.06); color:var(--cream); border:1px solid rgba(244,237,226,0.12); cursor:pointer; }
 </style>
 </head>
 <body class="theme-dark">
@@ -53,9 +61,17 @@
     </div>
 
     <div class="panel">
-      <h3>Pending review</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h3 style="margin:0;">Pending review</h3>
+        <button id="toggleUnverifiedBtn">Show unverified transactions</button>
+      </div>
       <div class="sub">Confirming a correct match — or rejecting a wrong one — is what moves your audit readiness score. See <a href="reports.html" style="color:var(--cream);">Reports</a> for the score itself.</div>
       <div id="matchList"><div style="opacity:0.5; font-size:13px; padding:20px 0;">Loading…</div></div>
+
+      <div id="unverifiedPanel" style="margin-top:12px; display:none;">
+        <h4 style="margin-top:0;margin-bottom:8px;">Unverified transactions (no receipt)</h4>
+        <div id="unverifiedList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">No data</div></div>
+      </div>
     </div>
 
   </div>
@@ -134,6 +150,66 @@ async function handleAction(btn, card, matchId, action) {
     btn.textContent = action === 'confirm' ? 'Confirm — this is correct' : 'Reject — wrong match';
   }
 }
+
+// Expanded unverified transactions view (togglable)
+let __unverifiedLoaded = false;
+async function renderUnverifiedTransactions() {
+  const panel = document.getElementById('unverifiedList');
+  panel.innerHTML = '<div style="opacity:0.5; padding:10px 0;">Loading…</div>';
+  try {
+    const txns = await fetchUnmatchedTransactions();
+    if (!txns.length) {
+      panel.innerHTML = '<div class="empty-state">No unverified transactions found.</div>';
+      return;
+    }
+    txns.sort((a, b) => new Date(b.date) - new Date(a.date));
+    panel.innerHTML = '';
+    let lastDate = null;
+    txns.forEach(t => {
+      const d = (new Date(t.date)).toISOString().slice(0,10);
+      if (d !== lastDate) {
+        const hdr = document.createElement('div');
+        hdr.className = 'date-header';
+        hdr.textContent = d;
+        panel.appendChild(hdr);
+        lastDate = d;
+      }
+      const row = document.createElement('div');
+      row.className = 'txn-row';
+      const amt = Number(t.total ?? t.amount ?? t.tx_amount ?? 0).toFixed(2);
+      row.innerHTML = `
+        <div>
+          <div class="txn-store">${t.store_name || t.source || 'Unknown'}</div>
+          <div class="txn-date">${t.date}</div>
+        </div>
+        <div class="txn-amt">$${amt}</div>
+      `;
+      panel.appendChild(row);
+    });
+    __unverifiedLoaded = true;
+  } catch (err) {
+    console.error(err);
+    panel.innerHTML = `<div class="empty-state">Error loading unverified transactions.</div>`;
+  }
+}
+
+document.addEventListener('click', async (e) => {
+  if (e.target && e.target.id === 'toggleUnverifiedBtn') {
+    const btn = e.target;
+    const container = document.getElementById('unverifiedPanel');
+    if (container.style.display === 'none' || !container.style.display) {
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      container.style.display = 'block';
+      if (!__unverifiedLoaded) await renderUnverifiedTransactions();
+      btn.textContent = 'Hide unverified';
+      btn.disabled = false;
+    } else {
+      container.style.display = 'none';
+      btn.textContent = 'Show unverified transactions';
+    }
+  }
+});
 
 (async function () {
   const listEl = document.getElementById('matchList');
