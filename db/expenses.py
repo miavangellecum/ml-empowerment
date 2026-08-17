@@ -215,7 +215,7 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
         # by_category has no per-row dates to give it, which was the root
         # cause of dates going missing in the generated report.
         "ledger_rows": [
-            {"date": str(r["date"]), "source": r["source"], "description": r["description"],
+            {"row_id": r["row_id"], "date": str(r["date"]), "source": r["source"], "description": r["description"],
              "amount": round(r["amount"], 2), "category": r["category"],
              "proof_status": r["proof_status"], "origin": r["origin"]}
             for r in ledger
