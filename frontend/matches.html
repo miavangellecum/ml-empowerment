@@ -74,7 +74,10 @@
       </div>
 
       <div id="allTxnsPanel" style="margin-top:12px; display:none;">
-        <h4 style="margin-top:0;margin-bottom:8px;">All transactions</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <h4 style="margin:0;">All transactions</h4>
+          <button id="filterUnverifiedBtn" style="font-family:'Space Grotesk',sans-serif; font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(244,237,226,0.06); color:var(--cream); border:1px solid rgba(244,237,226,0.12); cursor:pointer;">Show only unverified</button>
+        </div>
         <div class="sub" style="margin-bottom:8px;">Showing receipts and bank transactions together, grouped by date.</div>
         <div id="allTxnsList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">No data</div></div>
       </div>
@@ -201,6 +204,39 @@ async function renderUnverifiedTransactions() {
 
 // Full transactions view (receipts + unmatched), grouped by date
 let __allLoaded = false;
+let __allItems = [];
+let __showOnlyUnverified = false;
+
+function renderAllList(items) {
+  const panel = document.getElementById('allTxnsList');
+  panel.innerHTML = '';
+  if (!items.length) {
+    panel.innerHTML = '<div class="empty-state">No transactions to show.</div>';
+    return;
+  }
+  let lastDate = null;
+  items.forEach(it => {
+    const d = (new Date(it.date)).toISOString().slice(0,10);
+    if (d !== lastDate) {
+      const hdr = document.createElement('div');
+      hdr.className = 'date-header';
+      hdr.textContent = d;
+      panel.appendChild(hdr);
+      lastDate = d;
+    }
+    const row = document.createElement('div');
+    row.className = 'txn-row';
+    row.innerHTML = `
+      <div>
+        <div class="txn-store">${it.store_name}${it.no_receipt? ' · <span style="opacity:0.7">No receipt</span>': ''}</div>
+        <div class="txn-date">${it.date}</div>
+      </div>
+      <div class="txn-amt">$${it.amt.toFixed(2)}</div>
+    `;
+    panel.appendChild(row);
+  });
+}
+
 async function renderAllTransactions() {
   const panel = document.getElementById('allTxnsList');
   panel.innerHTML = '<div style="opacity:0.5; padding:10px 0;">Loading…</div>';
@@ -208,6 +244,7 @@ async function renderAllTransactions() {
     const rows = await fetchRecentActivity(); // returns combined sorted by date
     if (!rows.length) {
       panel.innerHTML = '<div class="empty-state">No transactions found.</div>';
+      __allItems = [];
       return;
     }
     // Normalize items: receipts have no_receipt=false, unmatched have no_receipt=true
@@ -220,35 +257,19 @@ async function renderAllTransactions() {
     }));
     // Sort newest first
     items.sort((a, b) => new Date(b.date) - new Date(a.date));
-    panel.innerHTML = '';
-    let lastDate = null;
-    items.forEach(it => {
-      const d = (new Date(it.date)).toISOString().slice(0,10);
-      if (d !== lastDate) {
-        const hdr = document.createElement('div');
-        hdr.className = 'date-header';
-        hdr.textContent = d;
-        panel.appendChild(hdr);
-        lastDate = d;
-      }
-      const row = document.createElement('div');
-      row.className = 'txn-row';
-      row.innerHTML = `
-        <div>
-          <div class="txn-store">${it.store_name}${it.no_receipt? ' · <span style="opacity:0.7">No receipt</span>': ''}</div>
-          <div class="txn-date">${it.date}</div>
-        </div>
-        <div class="txn-amt">$${it.amt.toFixed(2)}</div>
-      `;
-      panel.appendChild(row);
-    });
+    __allItems = items;
+    // initial render respects current filter
+    const toShow = __showOnlyUnverified ? items.filter(i=>i.no_receipt) : items;
+    renderAllList(toShow);
     __allLoaded = true;
   } catch (err) {
     console.error(err);
     panel.innerHTML = `<div class="empty-state">Error loading transactions.</div>`;
+    __allItems = [];
   }
 }
 
+// Click handler: toggle unverified panel or filter for all transactions
 document.addEventListener('click', async (e) => {
   if (e.target && e.target.id === 'toggleUnverifiedBtn') {
     const btn = e.target;
@@ -263,6 +284,24 @@ document.addEventListener('click', async (e) => {
     } else {
       container.style.display = 'none';
       btn.textContent = 'Show unverified transactions';
+    }
+  }
+
+  if (e.target && e.target.id === 'filterUnverifiedBtn') {
+    const fbtn = e.target;
+    __showOnlyUnverified = !__showOnlyUnverified;
+    fbtn.disabled = true;
+    fbtn.textContent = __showOnlyUnverified ? 'Filtering…' : 'Updating…';
+    try {
+      if (!__allLoaded) await renderAllTransactions();
+      const items = __showOnlyUnverified ? __allItems.filter(i=>i.no_receipt) : __allItems;
+      renderAllList(items);
+      fbtn.textContent = __showOnlyUnverified ? 'Show all transactions' : 'Show only unverified';
+    } catch (err) {
+      console.error(err);
+      alert('Failed to filter transactions');
+    } finally {
+      fbtn.disabled = false;
     }
   }
 });
