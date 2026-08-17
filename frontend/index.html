@@ -62,7 +62,10 @@
         </div>
 
         <div class="panel">
-          <h3>Recent activity</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <h3 style="margin:0;">Recent activity</h3>
+            <a href="matches.html?show=transactions" id="viewAllTxnsBtn" style="font-family:'Space Grotesk',sans-serif; font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(244,237,226,0.06); color:var(--cream); border:1px solid rgba(244,237,226,0.12); text-decoration:none;">View all transactions</a>
+          </div>
           <div class="sub">Dashed red rows are bank transactions with no receipt attached yet.</div>
           <div id="activityList"></div>
         </div>

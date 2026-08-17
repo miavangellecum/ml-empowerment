@@ -72,6 +72,12 @@
         <h4 style="margin-top:0;margin-bottom:8px;">Unverified transactions (no receipt)</h4>
         <div id="unverifiedList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">No data</div></div>
       </div>
+
+      <div id="allTxnsPanel" style="margin-top:12px; display:none;">
+        <h4 style="margin-top:0;margin-bottom:8px;">All transactions</h4>
+        <div class="sub" style="margin-bottom:8px;">Showing receipts and bank transactions together, grouped by date.</div>
+        <div id="allTxnsList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">No data</div></div>
+      </div>
     </div>
 
   </div>
@@ -193,6 +199,56 @@ async function renderUnverifiedTransactions() {
   }
 }
 
+// Full transactions view (receipts + unmatched), grouped by date
+let __allLoaded = false;
+async function renderAllTransactions() {
+  const panel = document.getElementById('allTxnsList');
+  panel.innerHTML = '<div style="opacity:0.5; padding:10px 0;">Loading…</div>';
+  try {
+    const rows = await fetchRecentActivity(); // returns combined sorted by date
+    if (!rows.length) {
+      panel.innerHTML = '<div class="empty-state">No transactions found.</div>';
+      return;
+    }
+    // Normalize items: receipts have no_receipt=false, unmatched have no_receipt=true
+    const items = rows.map(r => ({
+      id: r.id || r.item_id || r.tx_id || null,
+      store_name: r.store_name || r.store || r.source || 'Unknown',
+      date: r.date,
+      amt: Number(r.total ?? r.amount ?? 0),
+      no_receipt: !!r.no_receipt,
+    }));
+    // Sort newest first
+    items.sort((a, b) => new Date(b.date) - new Date(a.date));
+    panel.innerHTML = '';
+    let lastDate = null;
+    items.forEach(it => {
+      const d = (new Date(it.date)).toISOString().slice(0,10);
+      if (d !== lastDate) {
+        const hdr = document.createElement('div');
+        hdr.className = 'date-header';
+        hdr.textContent = d;
+        panel.appendChild(hdr);
+        lastDate = d;
+      }
+      const row = document.createElement('div');
+      row.className = 'txn-row';
+      row.innerHTML = `
+        <div>
+          <div class="txn-store">${it.store_name}${it.no_receipt? ' · <span style="opacity:0.7">No receipt</span>': ''}</div>
+          <div class="txn-date">${it.date}</div>
+        </div>
+        <div class="txn-amt">$${it.amt.toFixed(2)}</div>
+      `;
+      panel.appendChild(row);
+    });
+    __allLoaded = true;
+  } catch (err) {
+    console.error(err);
+    panel.innerHTML = `<div class="empty-state">Error loading transactions.</div>`;
+  }
+}
+
 document.addEventListener('click', async (e) => {
   if (e.target && e.target.id === 'toggleUnverifiedBtn') {
     const btn = e.target;
@@ -217,16 +273,30 @@ document.addEventListener('click', async (e) => {
     const matches = await fetchPendingMatches();
     if (!matches.length) {
       listEl.innerHTML = `<div class="empty-state">Nothing pending review right now.</div>`;
-      return;
+      // continue — still allow transactions view to show
+    } else {
+      listEl.innerHTML = '';
+      matches.forEach(m => listEl.appendChild(renderMatchCard(m)));
     }
-    listEl.innerHTML = '';
-    matches.forEach(m => listEl.appendChild(renderMatchCard(m)));
   } catch (err) {
     console.error(err);
     listEl.innerHTML = `<div class="empty-state">Couldn't load matches — is the API running?</div>`;
   }
 
   const circles = document.querySelectorAll('.circle');
+
+  // If navigated with ?show=transactions, open the full transactions view automatically
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('show') === 'transactions') {
+      const allPanel = document.getElementById('allTxnsPanel');
+      allPanel.style.display = 'block';
+      if (!__allLoaded) await renderAllTransactions();
+    }
+  } catch (err) {
+    // ignore URL parsing/render errors
+    console.error('Auto-open transactions failed', err);
+  }
   function tilt(x, y) {
     const px = x / window.innerWidth - 0.5;
     const py = y / window.innerHeight - 0.5;
