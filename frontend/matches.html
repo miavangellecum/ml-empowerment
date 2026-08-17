@@ -38,7 +38,17 @@
   .txn-amt{ opacity:0.85; }
   .txn-date{ font-size:12px; opacity:0.6; }
   .date-header{ font-size:13px; margin:14px 0 8px; opacity:0.8; }
-  #toggleUnverifiedBtn{ font-family:'Space Grotesk',sans-serif; font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(244,237,226,0.06); color:var(--cream); border:1px solid rgba(244,237,226,0.12); cursor:pointer; }
+  #toggleUnverifiedBtn,
+  #viewAllTxnsLocalBtn,
+  #filterUnverifiedBtn{ 
+    font-family:'Space Grotesk',sans-serif; font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(244,237,226,0.06); color:var(--cream); border:1px solid rgba(244,237,226,0.12); cursor:pointer; 
+  }
+  #toggleUnverifiedBtn:hover,
+  #viewAllTxnsLocalBtn:hover,
+  #filterUnverifiedBtn:hover{ background:rgba(244,237,226,0.12); }
+  #toggleUnverifiedBtn:disabled,
+  #viewAllTxnsLocalBtn:disabled,
+  #filterUnverifiedBtn:disabled{ opacity:0.5; cursor:not-allowed; }
 </style>
 </head>
 <body class="theme-dark">
@@ -79,7 +89,7 @@
       <div id="allTxnsPanel" style="margin-top:12px; display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
           <h4 style="margin:0;">All transactions</h4>
-          <button id="filterUnverifiedBtn" style="font-family:'Space Grotesk',sans-serif; font-size:13px; padding:8px 10px; border-radius:8px; background:rgba(244,237,226,0.06); color:var(--cream); border:1px solid rgba(244,237,226,0.12); cursor:pointer;">Show only unverified</button>
+          <button id="filterUnverifiedBtn">Show only unverified</button>
         </div>
         <div class="sub" style="margin-bottom:8px;">Showing receipts and bank transactions together, grouped by date.</div>
         <div id="allTxnsList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">No data</div></div>
