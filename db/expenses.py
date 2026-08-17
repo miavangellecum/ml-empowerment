@@ -53,7 +53,8 @@ def get_unified_ledger(start_date: str | None = None, end_date: str | None = Non
             SELECT li.id AS row_id, li.category, li.total_price AS amount,
                    r.date, r.store_name AS source, li.name AS description,
                    'receipt' AS origin, r.payment_method, r.s3_url,
-                   cm.amount_diff_pct AS matched_amount_diff_pct
+                   cm.amount_diff_pct AS matched_amount_diff_pct,
+                   NULL AS item_id
             FROM line_items li
             JOIN receipts r ON r.id = li.receipt_id
             LEFT JOIN LATERAL (
@@ -70,7 +71,8 @@ def get_unified_ledger(start_date: str | None = None, end_date: str | None = Non
             SELECT t.id AS row_id, 'uncategorized' AS category, ABS(t.amount) AS amount,
                    t.date, COALESCE(t.merchant_name, t.name) AS source, t.name AS description,
                    'transaction_only' AS origin, NULL AS payment_method, NULL AS s3_url,
-                   NULL AS matched_amount_diff_pct
+                   NULL AS matched_amount_diff_pct,
+                   t.item_id
             FROM plaid_transactions t
             WHERE NOT EXISTS (
                 SELECT 1 FROM receipt_transaction_matches m
@@ -164,13 +166,14 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
         {"date": str(r["date"]), "source": r["source"], "amount": round(r["amount"], 2)}
         for r in unreceipted_rows if r["amount"] > LARGE_TRANSACTION_THRESHOLD
     ]
-
+    # Every unreceipted charge, not just the $75+ ones — large_unreceipted
+    # above stayed the ONLY place these surfaced anywhere (report JSON,
+    # PDF, reports.html), which meant sub-$75 unreceipted transactions
+    # were silently invisible everywhere, not just deprioritized.
     all_unreceipted = [
-        {
-            "date": str(r["date"]), "source": r["source"], "amount": round(r["amount"], 2),
-            "over_threshold": r["amount"] > LARGE_TRANSACTION_THRESHOLD,
-        }
-        for r in unreceipted_rows
+        {"date": str(r["date"]), "source": r["source"], "amount": round(r["amount"], 2),
+         "over_threshold": r["amount"] > LARGE_TRANSACTION_THRESHOLD}
+        for r in sorted(unreceipted_rows, key=lambda r: -r["amount"])
     ]
 
     business_use_categories = {
@@ -198,7 +201,7 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
                 for r in anomaly_rows
             ],
             "large_unreceipted_transactions_over_75": large_unreceipted,
-            "all_unreceipted_transactions": all_unreceipted,  # NEW
+            "all_unreceipted_transactions": all_unreceipted,
             "business_use_verification_needed": business_use_categories,
         },
         "needs_review_rows": [

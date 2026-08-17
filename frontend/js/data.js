@@ -1,16 +1,10 @@
 // Talks to the FastAPI backend (app.py). Falls back to mock data if the
 // API isn't reachable yet, so the frontend is always demoable on its own.
 
-// Use same-origin relative API base so frontend works when served by the backend
 const API_BASE = "http://localhost:8000";
 
 // Kept in sync with extraction/llm/extract.py's IRS_CATEGORIES list.
 // No icons by design — color + label carry the category instead.
-// Every category gets its own hue so the orbit bubbles are always visually
-// distinguishable — no two categories (including the fallbacks) share a
-// color. All hex values are hand-picked to sit in the same warm, muted,
-// low-saturation family as the --sage/--red/--mustard/--teal/--plum theme
-// variables, just extended out to 20 distinct swatches instead of 5.
 const CATEGORY_META = {
   advertising:                      { icon: "", color: "var(--sage)" },     // #7C9A79
   car_and_truck_expenses:           { icon: "", color: "var(--red)" },      // #E8492D
@@ -35,6 +29,8 @@ const CATEGORY_META = {
   uncategorized:                    { icon: "", color: "#8C7A66" },  // warm taupe
   other:                            { icon: "", color: "#5E7A6B" },  // deep sage-grey
 };
+
+
 
 // Placeholder data shaped like the FastAPI /receipts response, used only
 // when the backend can't be reached.
@@ -93,19 +89,28 @@ async function fetchReceipts() {
 
 async function fetchUnmatchedTransactions() {
   try {
-    const res = await fetch(`${API_BASE}/plaid/transactions`);
+    // Uses /reports/ledger rather than /plaid/transactions — that endpoint
+    // already knows, correctly, which transactions have a CONFIRMED match
+    // (same logic backing the audit-readiness score). An earlier version
+    // of this function filtered on transactions.matched_receipt_id, a
+    // field that was never actually returned by the API — every
+    // transaction silently passed that filter, so already-matched charges
+    // (e.g. Verizon, Grill House) showed up here as "no receipt" even
+    // though they had one. This fixes that at the source instead of
+    // patching the symptom.
+    const res = await fetch(`${API_BASE}/reports/ledger`);
     if (!res.ok) throw new Error(`Server responded ${res.status}`);
-    const transactions = await res.json();
-    return transactions
-      .filter(t => !t.matched_receipt_id)
-      .map(t => ({
-        id: `txn-${t.transaction_id || t.id}`,
-        store_name: t.merchant_name || t.name || "Unknown",
-        date: t.date,
-        category: "uncategorized", // Plaid's own category taxonomy doesn't map to IRS categories — left uncategorized until reconciled
-        total: Math.abs(t.amount),
+    const ledger = await res.json();
+    return ledger
+      .filter(row => row.origin === "transaction_only")
+      .map(row => ({
+        id: `txn-${row.row_id}`,
+        store_name: row.source,
+        date: row.date,
+        category: row.category, // "uncategorized" — Plaid's own taxonomy doesn't map to IRS categories
+        total: row.amount,
         no_receipt: true,
-        item_id: t.item_id || null,
+        item_id: row.item_id || null,
       }));
   } catch (err) {
     console.warn("Falling back to mock bank transactions — API not reachable:", err.message);

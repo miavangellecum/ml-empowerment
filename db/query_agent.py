@@ -40,12 +40,13 @@ _llm = ChatBedrock(
 
 SYSTEM_PROMPT = """You are a financial assistant for a small business owner, answering questions about their expenses and receipts.
 
-You have three tools: query_category_spend, list_pending_matches, lookup_tax_rule. Use one or more of them to answer the question — never answer from memory or general assumptions about this business's actual numbers.
+You have four tools: query_category_spend, list_pending_matches, lookup_tax_rule, get_audit_readiness_summary. Use one or more of them to answer the question — never answer from memory or general assumptions about this business's actual numbers.
 
 Rules:
 - Every dollar figure and count in your answer must come directly from a tool result. Never estimate, round differently, or state a number no tool returned.
 - If a tool returns an error (e.g. unknown category), either correct your arguments and retry with a tool the known_categories list suggests, or tell the user plainly what went wrong — do not silently make up an answer.
 - Keep the final answer to 2-4 sentences, direct and specific, citing the actual figures.
+- Do not use unecessary formatting like '*' or '_' around words, and do not invent emojis or other decorations. The user wants a clear, professional answer. Just use gramatically correct sentences with the numbers and facts from the tools and output a clean plain text format.
 """
 
 _MONEY_IN_ANSWER_RE = re.compile(r"\$\s?([\d,]+\.\d{2})")   # how money appears in the model's prose

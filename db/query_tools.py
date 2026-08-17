@@ -97,4 +97,25 @@ def lookup_tax_rule(category: str | None = None):
     return list(rules.values())
 
 
-ALL_TOOLS = [query_category_spend, list_pending_matches, lookup_tax_rule]
+@tool
+def get_audit_readiness_summary(start_date: str | None = None, end_date: str | None = None) -> dict:
+    """Get the business's overall audit readiness score (% of total spend backed by a
+    confirmed, amount-matching bank charge), verified vs. total expense amounts, and
+    counts of anomalies/pending reviews/unreceipted transactions for a date range. Use
+    this for questions like 'what is my audit score' or 'how ready am I for an audit'."""
+    if start_date and not _valid_date(start_date):
+        return {"error": f"start_date '{start_date}' is not in YYYY-MM-DD format."}
+    if end_date and not _valid_date(end_date):
+        return {"error": f"end_date '{end_date}' is not in YYYY-MM-DD format."}
+
+    report = get_expense_report(start_date, end_date)
+    return {
+        "audit_readiness_score_pct": report["audit_readiness_score_pct"],
+        "verified_amount": report["verified_amount"],
+        "total_expense_amount": report["total_expense_amount"],
+        "total_deductible": report["total_deductible"],
+        "counts": report["counts"],
+    }
+
+
+ALL_TOOLS = [query_category_spend, list_pending_matches, lookup_tax_rule, get_audit_readiness_summary]

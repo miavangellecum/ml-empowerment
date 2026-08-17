@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from db.cockroach import get_conn
 from db.db import init_db, save_receipt
-from backend.plaid_db import init_plaid_db, save_item, upsert_transactions
+from backend.plaid_db import save_item, upsert_transactions
 from db.matcher import match_receipt, match_transaction
 
 MOCK_ITEM_ID = "mock-item-001"
@@ -130,7 +130,6 @@ def _reset_previous_mock_receipts():
 def main():
     print("Initializing schema...")
     init_db()
-    init_plaid_db()
 
     print("Clearing any previously-seeded mock receipts...")
     _reset_previous_mock_receipts()

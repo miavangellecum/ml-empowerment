@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spend — Review Matches</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .match-card{
+    display:flex; flex-direction:column; gap:10px;
+    padding:14px; border-radius:12px; background:rgba(244,237,226,0.05);
+    border:1px solid rgba(244,237,226,0.1); margin-bottom:12px;
+  }
+  .match-pair{ display:flex; align-items:center; gap:12px; }
+  .match-side{ flex:1; }
+  .match-side .label{ font-size:10px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.5; margin-bottom:2px; }
+  .match-side .name{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; }
+  .match-side .amt{ font-size:13px; opacity:0.8; }
+  .match-arrow{ opacity:0.4; font-size:16px; }
+  .match-confidence{ font-size:11.5px; opacity:0.6; }
+  .match-actions{ display:flex; gap:8px; margin-top:4px; }
+  .match-actions button{
+    flex:1; font-family:'Space Grotesk',sans-serif; font-size:12.5px; font-weight:600;
+    padding:9px; border-radius:8px; border:1px solid rgba(244,237,226,0.2);
+    background:rgba(244,237,226,0.08); color:var(--cream); cursor:pointer;
+  }
+  .match-actions button.confirm:hover{ background:var(--sage); border-color:var(--sage); }
+  .match-actions button.reject:hover{ background:var(--red); border-color:var(--red); }
+  .match-actions button:disabled{ opacity:0.4; cursor:not-allowed; }
+  .receipt-thumb{ display:inline-block; font-size:11px; opacity:0.6; margin-top:2px; text-decoration:underline; color:var(--cream); }
+  .empty-state{ text-align:center; padding:40px 20px; opacity:0.6; font-size:13.5px; }
+</style>
+</head>
+<body class="theme-dark">
+
+<div class="field" id="field">
+  <div class="circle c1"></div>
+  <div class="circle c2"></div>
+  <div class="circle c3"></div>
+</div>
+
+<div class="scene">
+  <div class="content">
+
+    <div class="topbar">
+      <div class="brand">◐ Spend</div>
+    </div>
+
+    <div class="title-block">
+      <h1>Review Matches</h1>
+    </div>
+
+    <div class="panel">
+      <h3>Pending review</h3>
+      <div class="sub">Confirming a correct match — or rejecting a wrong one — is what moves your audit readiness score. See <a href="reports.html" style="color:var(--cream);">Reports</a> for the score itself.</div>
+      <div id="matchList"><div style="opacity:0.5; font-size:13px; padding:20px 0;">Loading…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<nav class="actionbar">
+  <a href="receipts.html">My Receipts</a>
+  <a href="scan.html" class="scan-btn" title="Scan a receipt">+</a>
+  <a href="reports.html">Reports</a>
+  <a href="index.html">Dashboard</a>
+</nav>
+
+<script src="js/data.js"></script>
+<script>
+async function fetchPendingMatches() {
+  const res = await fetch(`${API_BASE}/matches?status=pending`);
+  if (!res.ok) throw new Error(`Failed to load matches (${res.status})`);
+  return res.json();
+}
+
+async function resolveMatch(matchId, action) {
+  const res = await fetch(`${API_BASE}/matches/${encodeURIComponent(matchId)}/${action}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to ${action} match (${res.status})`);
+  return res.json();
+}
+
+function renderMatchCard(m) {
+  const card = document.createElement('div');
+  card.className = 'match-card';
+  const confidencePct = (m.confidence * 100).toFixed(0);
+  card.innerHTML = `
+    <div class="match-pair">
+      <div class="match-side">
+        <div class="label">Receipt</div>
+        <div class="name">${m.store_name}</div>
+        <div class="amt">$${Number(m.receipt_total).toFixed(2)} · ${m.receipt_date}</div>
+        ${m.receipt_s3_url ? `<a class="receipt-thumb" href="${m.receipt_s3_url}" target="_blank" rel="noopener">View uploaded receipt</a>` : ''}
+      </div>
+      <div class="match-arrow">⇄</div>
+      <div class="match-side" style="text-align:right;">
+        <div class="label">Bank charge</div>
+        <div class="name">${m.merchant_name || m.name}</div>
+        <div class="amt">$${Number(m.amount).toFixed(2)} · ${m.tx_date}</div>
+      </div>
+    </div>
+    <div class="match-confidence">Matcher confidence: ${confidencePct}%</div>
+    <div class="match-actions">
+      <button class="confirm" data-id="${m.id}">Confirm — this is correct</button>
+      <button class="reject" data-id="${m.id}">Reject — wrong match</button>
+    </div>
+  `;
+
+  card.querySelector('.confirm').addEventListener('click', async (e) => {
+    await handleAction(e.currentTarget, card, m.id, 'confirm');
+  });
+  card.querySelector('.reject').addEventListener('click', async (e) => {
+    await handleAction(e.currentTarget, card, m.id, 'reject');
+  });
+
+  return card;
+}
+
+async function handleAction(btn, card, matchId, action) {
+  const buttons = card.querySelectorAll('button');
+  buttons.forEach(b => b.disabled = true);
+  btn.textContent = action === 'confirm' ? 'Confirming…' : 'Rejecting…';
+  try {
+    await resolveMatch(matchId, action);
+    card.style.opacity = '0.4';
+    card.style.pointerEvents = 'none';
+    setTimeout(() => card.remove(), 300);
+  } catch (err) {
+    console.error(err);
+    alert(`Couldn't ${action} this match: ${err.message}`);
+    buttons.forEach(b => b.disabled = false);
+    btn.textContent = action === 'confirm' ? 'Confirm — this is correct' : 'Reject — wrong match';
+  }
+}
+
+(async function () {
+  const listEl = document.getElementById('matchList');
+  try {
+    const matches = await fetchPendingMatches();
+    if (!matches.length) {
+      listEl.innerHTML = `<div class="empty-state">Nothing pending review right now.</div>`;
+      return;
+    }
+    listEl.innerHTML = '';
+    matches.forEach(m => listEl.appendChild(renderMatchCard(m)));
+  } catch (err) {
+    console.error(err);
+    listEl.innerHTML = `<div class="empty-state">Couldn't load matches — is the API running?</div>`;
+  }
+
+  const circles = document.querySelectorAll('.circle');
+  function tilt(x, y) {
+    const px = x / window.innerWidth - 0.5;
+    const py = y / window.innerHeight - 0.5;
+    circles.forEach((c, i) => {
+      const depth = (i + 1) * 14;
+      c.style.transform = `translate(${px * depth}px, ${py * depth}px)`;
+    });
+  }
+  window.addEventListener('pointermove', e => tilt(e.clientX, e.clientY));
+})();
+</script>
+
+</body>
+</html>

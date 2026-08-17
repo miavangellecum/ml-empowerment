@@ -8,14 +8,14 @@ s3_client = boto3.client(
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
 )
 
-BUCKET = os.getenv("S3_BUCKET_NAME")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 def upload_file_to_s3(local_path: str, key: str) -> str:
-    s3_client.upload_file(local_path, BUCKET, key)
-    return f"s3://{BUCKET}/{key}"
+    s3_client.upload_file(local_path, S3_BUCKET_NAME, key)
+    return f"s3://{S3_BUCKET_NAME}/{key}"
 
 def download_file_from_s3(key: str, local_path: str):
-    s3_client.download_file(BUCKET, key, local_path)
+    s3_client.download_file(S3_BUCKET_NAME, key, local_path)
 
 def get_presigned_url(s3_key: str, expires_in: int = 3600) -> str:
     return s3_client.generate_presigned_url(

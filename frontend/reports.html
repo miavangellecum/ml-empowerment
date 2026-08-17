@@ -251,6 +251,7 @@ function renderMarkdownLite(md) {
         <b>$${report.verified_amount.toFixed(2)} verified</b>
         of $${report.total_expense_amount.toFixed(2)} total business spend.
         ${report.counts.unreceipted_transactions} bank charge(s) still need a receipt.
+        ${report.counts.pending_proof_receipts > 0 ? `<a href="matches.html" style="color:var(--sage); display:inline-block; margin-top:6px;">${report.counts.pending_proof_receipts} match(es) awaiting your review — confirm to raise this score →</a>` : ''}
       </div>`;
     document.getElementById('categoryList').innerHTML = renderCategoryList(report.by_category);
     document.getElementById('flagsList').innerHTML = renderFlags(report);
