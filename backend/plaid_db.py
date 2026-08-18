@@ -1,13 +1,5 @@
-"""
-CockroachDB-backed replacement for backend/plaid_db.py (sqlite3).
-Function names/signatures match the original so plaid_routes.py's call
-sites barely change. upsert_transactions additionally embeds each
-transaction's merchant name/name and returns the list of newly-inserted
-transaction UUIDs so plaid_routes.py can hand them to db/matcher.py.
-"""
 from db.cockroach import get_conn
 from db.embeddings import EMBEDDING_DIM, embed_text, to_vector_literal
-
 
 def save_item(item_id: str, access_token: str, institution_name: str | None = None):
     with get_conn() as conn:
@@ -24,7 +16,6 @@ def save_item(item_id: str, access_token: str, institution_name: str | None = No
         )
         cur.close()
 
-
 def get_all_items() -> list[dict]:
     with get_conn() as conn:
         cur = conn.cursor()
@@ -33,7 +24,6 @@ def get_all_items() -> list[dict]:
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         cur.close()
     return rows
-
 
 def get_item(item_id: str) -> dict | None:
     with get_conn() as conn:
@@ -47,7 +37,6 @@ def get_item(item_id: str) -> dict | None:
         cur.close()
     return dict(zip(cols, row))
 
-
 def update_cursor(item_id: str, cursor: str):
     with get_conn() as conn:
         cur = conn.cursor()
@@ -55,7 +44,6 @@ def update_cursor(item_id: str, cursor: str):
             "UPDATE plaid_items SET cursor = %s WHERE item_id = %s", (cursor, item_id)
         )
         cur.close()
-
 
 def upsert_accounts(item_id: str, accounts: list[dict]) -> list[str]:
     """Insert/update Plaid account balances and metadata for an item."""
@@ -110,7 +98,6 @@ def upsert_accounts(item_id: str, accounts: list[dict]) -> list[str]:
 
     return saved_ids
 
-
 def get_accounts(item_id: str | None = None) -> list[dict]:
     with get_conn() as conn:
         cur = conn.cursor()
@@ -128,7 +115,6 @@ def get_accounts(item_id: str | None = None) -> list[dict]:
     for r in rows:
         r["id"] = str(r["id"])
     return rows
-
 
 def upsert_transactions(item_id: str, transactions: list[dict]) -> list[str]:
     """Inserts/updates transactions, embedding merchant_name (falling back
@@ -195,7 +181,6 @@ def upsert_transactions(item_id: str, transactions: list[dict]) -> list[str]:
 
     return new_ids
 
-
 def remove_transactions(transaction_ids: list[str]):
     if not transaction_ids:
         return
@@ -206,7 +191,6 @@ def remove_transactions(transaction_ids: list[str]):
             [(tid,) for tid in transaction_ids],
         )
         cur.close()
-
 
 def get_transactions(item_id: str | None = None) -> list[dict]:
     with get_conn() as conn:
@@ -226,56 +210,6 @@ def get_transactions(item_id: str | None = None) -> list[dict]:
         r["id"] = str(r["id"])
         r.pop("merchant_embedding", None)  # not JSON-serializable-friendly, and irrelevant to the UI
     return rows
-def upsert_accounts(item_id: str, accounts: list[dict]):
-    """Stores/refreshes the latest balance snapshot for every account on an item."""
-    with get_conn() as conn:
-        cur = conn.cursor()
-        for a in accounts:
-            balances = a.get("balances") or {}
-            cur.execute("""
-                INSERT INTO plaid_accounts
-                    (account_id, item_id, name, official_name, mask, type, subtype,
-                     current_balance, available_balance, iso_currency_code, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
-                ON CONFLICT (account_id) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    official_name = EXCLUDED.official_name,
-                    mask = EXCLUDED.mask,
-                    type = EXCLUDED.type,
-                    subtype = EXCLUDED.subtype,
-                    current_balance = EXCLUDED.current_balance,
-                    available_balance = EXCLUDED.available_balance,
-                    iso_currency_code = EXCLUDED.iso_currency_code,
-                    updated_at = now()
-            """, (
-                a.get("account_id"), item_id, a.get("name"), a.get("official_name"),
-                a.get("mask"), a.get("type"), a.get("subtype"),
-                balances.get("current"), balances.get("available"),
-                balances.get("iso_currency_code"),
-            ))
-        cur.close()
-
-
-def get_accounts(item_id: str | None = None) -> list[dict]:
-    """Accounts joined with their parent bank's institution_name, for display."""
-    with get_conn() as conn:
-        cur = conn.cursor()
-        if item_id:
-            cur.execute("""
-                SELECT pa.*, pi.institution_name FROM plaid_accounts pa
-                JOIN plaid_items pi ON pi.item_id = pa.item_id
-                WHERE pa.item_id = %s
-            """, (item_id,))
-        else:
-            cur.execute("""
-                SELECT pa.*, pi.institution_name FROM plaid_accounts pa
-                JOIN plaid_items pi ON pi.item_id = pa.item_id
-            """)
-        rows = cur.fetchall()
-        cols = [d.name for d in cur.description]
-        cur.close()
-    return [dict(zip(cols, r)) for r in rows]
-
 
 def delete_item(item_id: str):
     """Unlinks a bank locally: drops the item plus its accounts and transactions."""

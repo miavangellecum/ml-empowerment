@@ -94,12 +94,9 @@ def _to_s3_key(s3_url: str) -> str:
 
 @app.get("/receipts")
 async def list_receipts_route():
-    receipts = get_receipts()
-    # presign any s3 URLs so frontend can load images directly
-    for r in receipts:
-        if r.get("s3_url"):
-            r["s3_url"] = get_presigned_url(_to_s3_key(r["s3_url"]))
-    return receipts
+    # get_receipts() already presigns s3_url internally (see db/db.py) —
+    # presigning again here double-encoded the URL and broke the link.
+    return get_receipts()
 
 
 @app.get("/receipts/{receipt_id}")
@@ -107,9 +104,8 @@ async def get_receipt_route(receipt_id: str):
     receipt = get_receipt(receipt_id)
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
-    if receipt.get("s3_url"):
-        receipt["s3_url"] = get_presigned_url(_to_s3_key(receipt["s3_url"]))
     return receipt
+
 
 # Static files mount must remain last
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")

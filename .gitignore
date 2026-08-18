@@ -12,5 +12,3 @@ output/
 .gitignore
 .vercel
 .env*
-
-.env.local
