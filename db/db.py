@@ -23,6 +23,11 @@ def init_db():
         """)
 
         cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS receipts_dedupe_idx
+            ON receipts (store_name, date, total)
+        """)
+
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS line_items (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 receipt_id UUID NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
@@ -161,6 +166,31 @@ def derive_receipt_category(items: list[dict] | None) -> str:
     if len(unique) == 1:
         return next(iter(unique))
     return "other_expenses"
+
+def check_duplicate_receipt(store_name: str | None, date, total) -> str | None:
+    """Returns the existing receipt's id if a receipt with the same
+    store_name + date + total already exists, else None. This is a
+    fingerprint check, not a perceptual/image match — same vendor, same
+    day, same amount is a strong enough signal for a receipt to be a
+    re-upload, and cheap enough to run before we ever touch S3 or Bedrock
+    on a duplicate."""
+    if not store_name or not date or total is None:
+        return None  # not enough signal to safely dedupe on
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id FROM receipts
+            WHERE store_name = %s AND date = %s AND total = %s
+            LIMIT 1
+            """,
+            (store_name, date, total),
+        )
+        row = cur.fetchone()
+        cur.close()
+
+    return str(row[0]) if row else None
 
 def save_receipt(receipt: dict, s3_url: str | None = None) -> str:
     """Inserts the receipt + its line items, embedding store_name for

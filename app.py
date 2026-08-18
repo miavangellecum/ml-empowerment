@@ -20,6 +20,7 @@ from backend.plaid_routes import router as plaid_router
 from backend.matches_routes import router as matches_router
 from backend.reports_routes import router as reports_router
 from backend.agent_routes import router as agent_router
+from db.db import save_receipt, get_receipts, get_receipt, init_db, check_duplicate_receipt
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -36,6 +37,7 @@ MAX_UPLOAD_MB = 15
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 @app.post("/extract")
+
 async def extract_receipt(file: UploadFile = File(...)):
     suffix = os.path.splitext(file.filename or "")[1] or ""
     fd, temp_path = tempfile.mkstemp(suffix=suffix, prefix="receipt_")
@@ -68,10 +70,21 @@ async def extract_receipt(file: UploadFile = File(...)):
         s3_key = f"receipts/{file.filename}"
         s3_url = upload_file_to_s3(temp_path, s3_key)
 
-        # Direct LLM Vision extraction via Bedrock
         receipt = parse_receipt(temp_path)
         receipt_dict = receipt.model_dump()
 
+        existing_id = check_duplicate_receipt(
+            receipt_dict.get("store_name"),
+            receipt_dict.get("date"),
+            receipt_dict.get("total"),
+        )
+        if existing_id:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This receipt looks like a duplicate of one already on file "
+                       f"(same store, date, and total) — receipt_id {existing_id}.",
+            )
+        
         receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
         matches = match_receipt(receipt_id)
 
