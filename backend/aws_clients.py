@@ -1,5 +1,6 @@
 import boto3
 import os
+from botocore.exceptions import ClientError
 
 s3_client = boto3.client(
     "s3",
@@ -11,15 +12,31 @@ s3_client = boto3.client(
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 def upload_file_to_s3(local_path: str, key: str) -> str:
-    s3_client.upload_file(local_path, S3_BUCKET_NAME, key)
-    return f"s3://{S3_BUCKET_NAME}/{key}"
+    try:
+        s3_client.upload_file(local_path, S3_BUCKET_NAME, key)
+        return f"s3://{S3_BUCKET_NAME}/{key}"
+    except ClientError as e:
+        print(f"Failed to upload to S3: {e}")
+        raise
 
 def download_file_from_s3(key: str, local_path: str):
-    s3_client.download_file(S3_BUCKET_NAME, key, local_path)
+    try:
+        s3_client.download_file(S3_BUCKET_NAME, key, local_path)
+    except ClientError as e:
+        print(f"Failed to download from S3: {e}")
+        raise
 
 def get_presigned_url(s3_key: str, expires_in: int = 3600) -> str:
-    return s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": S3_BUCKET_NAME, "Key": s3_key},
-        ExpiresIn=expires_in,
-    )
+    """Generate a presigned URL for an S3 object."""
+    try:
+        # Make sure the key doesn't have a leading slash
+        key = s3_key.lstrip('/')
+        url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": S3_BUCKET_NAME, "Key": key},
+            ExpiresIn=expires_in,
+        )
+        return url
+    except ClientError as e:
+        print(f"Failed to generate presigned URL for {s3_key}: {e}")
+        raise

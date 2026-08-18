@@ -1,6 +1,6 @@
 from db.cockroach import get_conn
 from db.embeddings import EMBEDDING_DIM, embed_text, to_vector_literal
-from backend.aws_clients import get_presigned_url  # add this import
+from backend.aws_clients import get_presigned_url
 
 def init_db():
     with get_conn() as conn:
@@ -51,22 +51,22 @@ def init_db():
         """)
 
         cur.execute("""
-                    CREATE TABLE IF NOT EXISTS plaid_accounts
-                    (
-                        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        account_id        TEXT UNIQUE NOT NULL,
-                        item_id           TEXT        NOT NULL REFERENCES plaid_items (item_id),
-                        name              TEXT,
-                        official_name     TEXT,
-                        mask              TEXT,
-                        type              TEXT,
-                        subtype           TEXT,
-                        current_balance   DECIMAL,
-                        available_balance DECIMAL,
-                        iso_currency_code TEXT,
-                        updated_at        TIMESTAMPTZ      DEFAULT now()
-                    )
-                    """)
+            CREATE TABLE IF NOT EXISTS plaid_accounts
+            (
+                id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                account_id        TEXT UNIQUE NOT NULL,
+                item_id           TEXT        NOT NULL REFERENCES plaid_items (item_id),
+                name              TEXT,
+                official_name     TEXT,
+                mask              TEXT,
+                type              TEXT,
+                subtype           TEXT,
+                current_balance   DECIMAL,
+                available_balance DECIMAL,
+                iso_currency_code TEXT,
+                updated_at        TIMESTAMPTZ      DEFAULT now()
+            )
+        """)
 
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS plaid_transactions (
@@ -86,29 +86,9 @@ def init_db():
             )
         """)
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS plaid_accounts (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                item_id TEXT NOT NULL REFERENCES plaid_items(item_id),
-                account_id TEXT NOT NULL,
-                name TEXT,
-                official_name TEXT,
-                mask TEXT,
-                type TEXT,
-                subtype TEXT,
-                available_balance DECIMAL,
-                current_balance DECIMAL,
-                iso_currency_code TEXT,
-                unofficial_currency_code TEXT,
-                created_at TIMESTAMPTZ DEFAULT now(),
-                updated_at TIMESTAMPTZ DEFAULT now(),
-                UNIQUE (item_id, account_id)
-            )
-        """)
+        # Remove duplicate CREATE TABLE for plaid_accounts (it's already defined above)
+        # The second CREATE TABLE plaid_accounts in your file is a duplicate - remove it
 
-        # The join table: one row per candidate (receipt, transaction) pair
-        # the agent has considered. status starts 'pending' unless the
-        # confidence score clears AUTO_CONFIRM_THRESHOLD in matcher.py.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS receipt_transaction_matches (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -118,40 +98,27 @@ def init_db():
                 amount_diff_pct FLOAT,
                 date_diff_days INT,
                 confidence FLOAT,
-                status TEXT NOT NULL DEFAULT 'pending', -- pending | confirmed | rejected
-                matched_by TEXT NOT NULL DEFAULT 'agent', -- agent | user
+                status TEXT NOT NULL DEFAULT 'pending',
+                matched_by TEXT NOT NULL DEFAULT 'agent',
                 created_at TIMESTAMPTZ DEFAULT now(),
                 updated_at TIMESTAMPTZ DEFAULT now(),
                 UNIQUE (receipt_id, transaction_id)
             )
         """)
 
-        # Vector indexes power the nearest-neighbour lookups in matcher.py.
-        # Requires CockroachDB v25.2+ with the vector index feature enabled
-        # (SET CLUSTER SETTING feature.vector_index.enabled = true;)
         for stmt in (
-            "CREATE VECTOR INDEX IF NOT EXISTS receipts_store_embedding_idx "
-            "ON receipts (store_embedding)",
-            "CREATE VECTOR INDEX IF NOT EXISTS plaid_tx_merchant_embedding_idx "
-            "ON plaid_transactions (merchant_embedding)",
+            "CREATE VECTOR INDEX IF NOT EXISTS receipts_store_embedding_idx ON receipts (store_embedding)",
+            "CREATE VECTOR INDEX IF NOT EXISTS plaid_tx_merchant_embedding_idx ON plaid_transactions (merchant_embedding)",
         ):
             try:
                 cur.execute(stmt)
             except Exception as e:
-                # Non-fatal: matcher.py still works (just does a full scan)
-                # without the index, e.g. on clusters where the feature
-                # flag above hasn't been set yet.
                 print(f"[schema] skipping vector index ({e})")
 
         cur.close()
 
 def derive_receipt_category(items: list[dict] | None) -> str:
-    """Return one category for the receipt from its line items.
-
-    The UI expects a single receipt-level category even though the database stores
-    categories per line item. If the receipt contains mixed categories, we fall back
-    to the generic business expense bucket instead of showing the wrong default.
-    """
+    """Return one category for the receipt from its line items."""
     categories = []
     for item in items or []:
         if not isinstance(item, dict):
@@ -169,13 +136,9 @@ def derive_receipt_category(items: list[dict] | None) -> str:
 
 def check_duplicate_receipt(store_name: str | None, date, total) -> str | None:
     """Returns the existing receipt's id if a receipt with the same
-    store_name + date + total already exists, else None. This is a
-    fingerprint check, not a perceptual/image match — same vendor, same
-    day, same amount is a strong enough signal for a receipt to be a
-    re-upload, and cheap enough to run before we ever touch S3 or Bedrock
-    on a duplicate."""
+    store_name + date + total already exists, else None."""
     if not store_name or not date or total is None:
-        return None  # not enough signal to safely dedupe on
+        return None
 
     with get_conn() as conn:
         cur = conn.cursor()
@@ -249,7 +212,7 @@ def get_receipts() -> list[dict]:
 
         for r in rows:
             r["id"] = str(r["id"])
-            r["s3_url"] = _presign(r["s3_url"])  # add this line
+            r["s3_url"] = _presign_url(r["s3_url"])
             cur2 = conn.cursor()
             cur2.execute(
                 "SELECT id, name, quantity, unit_price, total_price, category "
@@ -266,7 +229,6 @@ def get_receipts() -> list[dict]:
         cur.close()
 
     return rows
-
 
 def get_receipt(receipt_id: str) -> dict | None:
     with get_conn() as conn:
@@ -286,7 +248,7 @@ def get_receipt(receipt_id: str) -> dict | None:
         cols = [d.name for d in cur.description]
         receipt = dict(zip(cols, row))
         receipt["id"] = str(receipt["id"])
-        receipt["s3_url"] = _presign(receipt["s3_url"])  # add this line
+        receipt["s3_url"] = _presign_url(receipt["s3_url"])
 
         cur.execute(
             "SELECT id, name, quantity, unit_price, total_price, category "
@@ -302,14 +264,23 @@ def get_receipt(receipt_id: str) -> dict | None:
 
     return receipt
 
-def _presign(s3_url: str | None) -> str | None:
+def _presign_url(s3_url: str | None) -> str | None:
     """Converts a stored s3://bucket/key URL into a short-lived HTTPS
-    URL the frontend can actually load. Presigning happens on read,
-    not on write, since presigned URLs expire and receipts are stored
-    long-term."""
+    URL the frontend can actually load."""
     if not s3_url:
         return None
     if not s3_url.startswith("s3://"):
-        return s3_url  # already a usable URL, or empty — don't touch it
-    key = "/".join(s3_url.split("/")[3:])
-    return get_presigned_url(key)
+        return s3_url  # already a usable URL
+    
+    # Extract the key from s3://bucket-name/path/to/file
+    # s3://my-bucket/receipts/image.jpg -> receipts/image.jpg
+    parts = s3_url.split("/")
+    if len(parts) < 4:
+        return s3_url
+    key = "/".join(parts[3:])  # Skip "s3:", "", "bucket-name"
+    
+    try:
+        return get_presigned_url(key)
+    except Exception as e:
+        print(f"Failed to generate presigned URL for {key}: {e}")
+        return s3_url  # Fall back to the original URL

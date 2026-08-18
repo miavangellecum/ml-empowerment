@@ -38,7 +38,6 @@ MAX_UPLOAD_MB = 15
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 @app.post("/extract")
-
 async def extract_receipt(file: UploadFile = File(...)):
     suffix = os.path.splitext(file.filename or "")[1] or ""
     fd, temp_path = tempfile.mkstemp(suffix=suffix, prefix="receipt_")
@@ -68,12 +67,11 @@ async def extract_receipt(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Could not read the uploaded file.")
 
     try:
-        s3_key = f"receipts/{file.filename}"
-        s3_url = upload_file_to_s3(temp_path, s3_key)
-
+        # Parse the receipt FIRST (before S3 upload) to check for duplicates
         receipt = parse_receipt(temp_path)
         receipt_dict = receipt.model_dump()
 
+        # Check for duplicate BEFORE uploading to S3 and saving to DB
         existing_id = check_duplicate_receipt(
             receipt_dict.get("store_name"),
             receipt_dict.get("date"),
@@ -82,16 +80,32 @@ async def extract_receipt(file: UploadFile = File(...)):
         if existing_id:
             raise HTTPException(
                 status_code=409,
-                detail=f"This receipt looks like a duplicate of one already on file "
-                       f"(same store, date, and total) — receipt_id {existing_id}.",
+                detail=f"This receipt looks like a duplicate of one already on file (same store, date, and total) — receipt_id {existing_id}.",
             )
+
+        # Generate a clean S3 key - use timestamp to avoid filename collisions
+        import time
+        timestamp = int(time.time())
+        original_filename = os.path.basename(file.filename or "receipt")
+        name, ext = os.path.splitext(original_filename)
+        # Clean the filename - remove special characters
+        clean_name = "".join(c for c in name if c.isalnum() or c in "._- ")
+        s3_key = f"receipts/{timestamp}_{clean_name}{ext}"
+        
+        # Upload to S3
+        s3_url = upload_file_to_s3(temp_path, s3_key)
         
         receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
         matches = match_receipt(receipt_id)
 
+        # Also return the presigned URL directly for immediate viewing
+        from backend.aws_clients import get_presigned_url
+        presigned_url = get_presigned_url(s3_key)
+
         return {
             "receipt_id": receipt_id,
-            "s3_url": s3_url,
+            "s3_url": presigned_url,  # Return the presigned URL
+            "s3_key": s3_key,         # Also return the key for debugging
             "data": receipt_dict,
             "matches": matches,
         }
@@ -107,11 +121,6 @@ async def extract_receipt(file: UploadFile = File(...)):
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-def _to_s3_key(s3_url: str) -> str:
-    if s3_url.startswith("s3://"):
-        return "/".join(s3_url.split("/")[3:])
-    return s3_url
 
 @app.get("/receipts")
 async def list_receipts_route():
