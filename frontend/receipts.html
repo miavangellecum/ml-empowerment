@@ -620,7 +620,7 @@
             const totalEl = document.getElementById('feedTotal');
             const sum = filtered.reduce((s, r) => s + r.total, 0);
             totalEl.textContent =
-                `${filtered.length} receipt${filtered.length !== 1 ? 's' : ''} · −€${sum.toFixed(2)}`;
+                `${filtered.length} receipt${filtered.length !== 1 ? 's' : ''} · −$${sum.toFixed(2)}`;
 
             const listEl = document.getElementById('accordionList');
 
@@ -647,7 +647,7 @@
                 html += `
                     <div class="detail-line-item">
                         <span class="name">${it.name}${qty > 1 ? `<span class="qty">×${qty}</span>` : ''}</span>
-                        <span class="price">€${price.toFixed(2)}</span>
+                        <span class="price">$${price.toFixed(2)}</span>
                     </div>
                 `;
             });
@@ -658,7 +658,7 @@
             html += `
                 <div class="detail-summary-row">
                     <span>Subtotal</span>
-                    <span>€${r.subtotal.toFixed(2)}</span>
+                    <span>$${r.subtotal.toFixed(2)}</span>
                 </div>
             `;
         }
@@ -666,14 +666,14 @@
             html += `
                 <div class="detail-summary-row">
                     <span>Tax</span>
-                    <span>€${r.tax.toFixed(2)}</span>
+                    <span>$${r.tax.toFixed(2)}</span>
                 </div>
             `;
         }
         html += `
             <div class="detail-summary-row total">
                 <span>Total</span>
-                <span>€${r.total.toFixed(2)}</span>
+                <span>$${r.total.toFixed(2)}</span>
             </div>
             <div style="margin-top:12px; text-align:right;">
                 <a href="receipt.html?id=${r.id}" style="color:rgba(244,237,226,0.6); text-decoration:none; font-weight:500; font-size:13px; border:1px solid rgba(244,237,226,0.15); padding:4px 16px; border-radius:999px; display:inline-block;">View full receipt →</a>
@@ -724,7 +724,7 @@
                                 ${dateDisplay ? `<span class="accordion-dot"></span><span class="accordion-date">${dateDisplay}</span>` : ''}
                             </div>
                         </div>
-                        <span class="accordion-amount">−€${r.total.toFixed(2)}</span>
+                        <span class="accordion-amount">−$${r.total.toFixed(2)}</span>
                     </div>
                     <div class="accordion-details">
                         <div class="accordion-details-inner">
@@ -747,7 +747,7 @@
                             <span class="accordion-category">All time</span>
                         </div>
                     </div>
-                    <span class="accordion-amount">−€${totalSum.toFixed(2)}</span>
+                    <span class="accordion-amount">−$${totalSum.toFixed(2)}</span>
                 </div>
             `;
             fragment.appendChild(totalItem);

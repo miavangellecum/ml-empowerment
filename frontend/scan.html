@@ -593,7 +593,7 @@
                         const data = await uploadOne(file);
                         row.className = 'queue-row success';
                         row.querySelector('.queue-status').textContent =
-                            '€' + data.data.total.toFixed(2);
+                            '$' + data.data.total.toFixed(2);
                         successCount++;
                         lastReceiptId = data.receipt_id;
                     } catch (err) {

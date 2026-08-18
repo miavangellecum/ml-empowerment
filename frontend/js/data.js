@@ -330,7 +330,7 @@ async function renderBanksModalList() {
     const bankAccounts = accounts.filter(a => a.item_id === bank.item_id);
     const balanceTotal = bankAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
     const mask = bankAccounts[0]?.mask ? `**** ${bankAccounts[0].mask}` : "";
-    const balanceLabel = bankAccounts.length ? `€${balanceTotal.toFixed(2)}` : "Balance unavailable";
+    const balanceLabel = bankAccounts.length ? `$${balanceTotal.toFixed(2)}` : "Balance unavailable";
     const row = document.createElement("div");
     row.className = "banks-modal-row";
     row.innerHTML = `

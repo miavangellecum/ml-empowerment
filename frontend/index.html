@@ -118,13 +118,13 @@
 
         if (!allAccounts.length) {
           labelEl.textContent = 'TOTAL BALANCE · No bank connected';
-          amountEl.textContent = '€0.00';
+          amountEl.textContent = '$0.00';
           return;
         }
 
         const visibleAccounts = activeBankItemId ? (byBank[activeBankItemId]?.accounts || []) : allAccounts;
         const total = visibleAccounts.reduce((s, a) => s + (a.current_balance ?? a.available_balance ?? 0), 0);
-        const currency = visibleAccounts[0]?.iso_currency_code === 'USD' ? '$' : '€';
+        const currency = '$';
         const mask = visibleAccounts[0]?.mask ? `**** ${visibleAccounts[0].mask}` : `${visibleAccounts.length} account${visibleAccounts.length===1?'':'s'}`;
         const label = activeBankItemId
           ? `${byBank[activeBankItemId].name.toUpperCase()} BALANCE · ${mask}`
@@ -227,7 +227,7 @@
           b.style.zIndex = String(15000 - Math.round(size));
 
           b.style.display = 'flex'; b.style.flexDirection = 'column'; b.style.justifyContent = 'center'; b.style.alignItems = 'center'; b.style.textAlign = 'center'; b.style.overflow = 'hidden';
-          b.innerHTML = `<span class="cat">${cat}</span><span class="amt">€${amount.toFixed(0)}</span>`;
+          b.innerHTML = `<span class="cat">${cat}</span><span class="amt">$${amount.toFixed(0)}</span>`;
 
           const amtEl = b.querySelector('.amt');
           const catEl = b.querySelector('.cat');
@@ -238,7 +238,7 @@
             e.preventDefault();
             document.querySelectorAll('.bubble').forEach(x=>x.classList.remove('active'));
             b.classList.add('active');
-            detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>€${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
+            detail.innerHTML = `<span><span class="dot" style="background:${meta.color}"></span>${cat}</span><span>$${amount.toFixed(2)} · ${(share*100).toFixed(0)}% of spend</span>`;
             // bring clicked bubble to front for clarity
             b.style.zIndex = String(30000);
             // also move it to the end of the container so it renders above siblings in the same stacking context
@@ -267,7 +267,7 @@
               <div class="name">${r.store_name}</div>
               <div class="cat">${r.category}${r.no_receipt ? '<span class="warn-tag">No receipt</span>' : ''}</div>
             </div>
-            <div class="amt">−€${r.total.toFixed(2)}</div>`;
+            <div class="amt">−$${r.total.toFixed(2)}</div>`;
           listEl.appendChild(a);
         });
       }
@@ -304,7 +304,7 @@
         document.getElementById('receiptCount').textContent = receipts.length;
         document.getElementById('missingCount').textContent = visibleUnmatched.length;
         const weekTotal = visibleActivity.reduce((s,a)=>s+a.total,0);
-        document.getElementById('weekSpend').textContent = '−€' + weekTotal.toFixed(2);
+        document.getElementById('weekSpend').textContent = '−$' + weekTotal.toFixed(2);
 
         renderOrbit(visibleActivity);
         renderActivityList(visibleActivity);

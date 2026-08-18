@@ -253,7 +253,7 @@
                                     <tr>
                                         <td><span class="item-name">${item.name}</span> ${item.quantity > 1 ? `<span class="item-qty">×${item.quantity}</span>` : ''}</td>
                                         <td class="item-category">${item.category || 'other'}</td>
-                                        <td class="item-price">€${(item.total_price ?? item.unit_price ?? 0).toFixed(2)}</td>
+                                        <td class="item-price">$${(item.total_price ?? item.unit_price ?? 0).toFixed(2)}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -272,7 +272,7 @@
                     <div class="receipt-card-detail">
                         <div class="receipt-header">
                             <div class="store">${receipt.store_name || 'Unknown store'}</div>
-                            <div class="total">−€${total}</div>
+                            <div class="total">−$${total}</div>
                         </div>
                         <div class="receipt-meta">
                             <span><span class="label">Date</span> ${dateStr}</span>
@@ -285,10 +285,10 @@
 
                         <div class="receipt-footer">
                             <div>
-                                <div>Subtotal: €${subtotal}</div>
-                                <div>Tax: €${tax}</div>
+                                <div>Subtotal: $${subtotal}</div>
+                                <div>Tax: $${tax}</div>
                             </div>
-                            <div class="grand-total">Total: €${total}</div>
+                            <div class="grand-total">Total: $${total}</div>
                         </div>
 
                         ${s3Url ? `<a href="${s3Url}" target="_blank" class="s3-link">📎 View original receipt (S3)</a>` : ''}
