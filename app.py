@@ -1,3 +1,5 @@
+import tempfile
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,7 +12,6 @@ load_dotenv()
 logger = logging.getLogger("uvicorn.error")
 
 from extraction.llm.extract import parse_receipt
-from db.db import save_receipt, get_receipts, get_receipt, init_db
 ...
 from db.matcher import match_receipt
 from db.tax_rules import init_tax_rules
