@@ -4,6 +4,7 @@ from extraction.schema.schema import Receipt
 from langchain_aws import ChatBedrock
 from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
+from botocore.exceptions import NoCredentialsError
 
 llm = ChatBedrock(
     model_id=os.getenv("BEDROCK_MODEL_ID", "eu.anthropic.claude-haiku-4-5-20251001-v1:0"),
@@ -42,19 +43,39 @@ If you cannot find a specific field's value, do your best estimate from context 
 Always include a numeric 'total' value — if there is no explicit total, sum the line items."""
 
 def parse_receipt(image_path: str) -> Receipt:
-    """Directly parses receipt images/PDFs into structured data using Claude 3.5 Sonnet Vision."""
-    ext = image_path.lower()
-    if ext.endswith(".png"):
-        media_type = "image/png"
-    elif ext.endswith(".pdf"):
-        media_type = "application/pdf"
-    elif ext.endswith(".webp"):
-        media_type = "image/webp"
-    else:
-        media_type = "image/jpeg"
+    """Directly parses receipt images/PDFs into structured data using Claude 3.5 Sonnet Vision.
 
-    with open(image_path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode("utf-8")
+    PDFs are converted to an image (first page) because Bedrock's InvokeModel image
+    payload only accepts image/* media types (jpeg/png/gif/webp).
+    """
+    ext = image_path.lower()
+
+    # Handle PDF by rendering the first page to PNG (requires PyMuPDF / pymupdf)
+    if ext.endswith(".pdf"):
+        try:
+            import fitz  # PyMuPDF
+        except Exception:
+            raise Exception(
+                "PDF receipts require PyMuPDF to convert to an image. Install with: pip install pymupdf"
+            )
+        doc = fitz.open(image_path)
+        page = doc.load_page(0)
+        pix = page.get_pixmap(alpha=False)
+        img_bytes = pix.tobytes("png")
+        media_type = "image/png"
+        image_b64 = base64.b64encode(img_bytes).decode("utf-8")
+    else:
+        if ext.endswith(".png"):
+            media_type = "image/png"
+        elif ext.endswith(".webp"):
+            media_type = "image/webp"
+        elif ext.endswith(".gif"):
+            media_type = "image/gif"
+        else:
+            media_type = "image/jpeg"
+
+        with open(image_path, "rb") as f:
+            image_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     prompt_text = f"""You are analyzing a photo or PDF of a receipt/invoice for a small business owner's tax recordkeeping. Read the document directly and extract structured data.
 
@@ -78,6 +99,22 @@ def parse_receipt(image_path: str) -> Receipt:
 def _invoke_with_retry(prompt):
     try:
         return structured_llm.invoke(prompt)
+    except NoCredentialsError:
+        # Development fallback: when AWS credentials are not available locally,
+        # return a minimal mock Receipt so local testing can continue without
+        # invoking Bedrock. Do NOT use this in production.
+        return Receipt(
+            store_name="DEVELOPMENT MOCK (no AWS creds)",
+            date=None,
+            invoice_number=None,
+            payment_method=None,
+            currency="EUR",
+            items=[],
+            subtotal=None,
+            vat_total=None,
+            extraction_method="dev_mock",
+            total=0.0,
+        )
     except ValidationError:
         retry_note = "\n\nIMPORTANT: Return each field as a single clean value only — do not include any XML/tool-call tags or extra text inside a field value."
         if isinstance(prompt, str):

@@ -92,6 +92,16 @@ def _to_s3_key(s3_url: str) -> str:
         return "/".join(s3_url.split("/")[3:])
     return s3_url
 
+@app.get("/receipts")
+async def list_receipts_route():
+    receipts = get_receipts()
+    # presign any s3 URLs so frontend can load images directly
+    for r in receipts:
+        if r.get("s3_url"):
+            r["s3_url"] = get_presigned_url(_to_s3_key(r["s3_url"]))
+    return receipts
+
+
 @app.get("/receipts/{receipt_id}")
 async def get_receipt_route(receipt_id: str):
     receipt = get_receipt(receipt_id)
