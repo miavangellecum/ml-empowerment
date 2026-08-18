@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import tempfile
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -33,7 +34,9 @@ MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 @app.post("/extract")
 async def extract_receipt(file: UploadFile = File(...)):
-    temp_path = f"temp_{file.filename}"
+    suffix = os.path.splitext(file.filename or "")[1] or ""
+    fd, temp_path = tempfile.mkstemp(suffix=suffix, prefix="receipt_")
+    os.close(fd)
 
     written = 0
     try:
