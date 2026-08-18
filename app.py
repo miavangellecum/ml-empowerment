@@ -1,5 +1,3 @@
-import tempfile
-
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,11 +9,11 @@ load_dotenv()
 
 logger = logging.getLogger("uvicorn.error")
 
-from extraction.llm.extract import parse_receipt
+from extraction.llm.extract import parse_receipt_from_bytes
 ...
 from db.matcher import match_receipt
 from db.tax_rules import init_tax_rules
-from backend.aws_clients import upload_file_to_s3, get_presigned_url
+from backend.aws_clients import upload_file_to_s3_from_bytes, get_presigned_url
 
 from backend.plaid_routes import router as plaid_router
 from backend.matches_routes import router as matches_router
@@ -39,37 +37,22 @@ MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 @app.post("/extract")
 async def extract_receipt(file: UploadFile = File(...)):
-    suffix = os.path.splitext(file.filename or "")[1] or ""
-    fd, temp_path = tempfile.mkstemp(suffix=suffix, prefix="receipt_")
-    os.close(fd)
-
-    written = 0
+    """Upload and process a receipt image/PDF in-memory (serverless-compatible)."""
     try:
-        with open(temp_path, "wb") as f:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > MAX_UPLOAD_BYTES:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File exceeds the {MAX_UPLOAD_MB}MB upload limit.",
-                    )
-                f.write(chunk)
-    except HTTPException:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise
-    except Exception:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(status_code=400, detail="Could not read the uploaded file.")
-
-    try:
-        # Parse the receipt FIRST (before S3 upload) to check for duplicates
-        receipt = parse_receipt(temp_path)
+        # Read file into memory
+        file_bytes = await file.read()
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds the {MAX_UPLOAD_MB}MB upload limit.",
+            )
+        logger.info(f"Received upload: {file.filename} ({len(file_bytes)} bytes)")
+        
+        # Parse the receipt from bytes FIRST (before S3 upload) to check for duplicates
+        logger.info(f"Parsing receipt from bytes: {file.filename}")
+        receipt = parse_receipt_from_bytes(file_bytes, file.filename or "receipt")
         receipt_dict = receipt.model_dump()
+        logger.info(f"Receipt parsed: {receipt_dict.get('store_name')} - ${receipt_dict.get('total')}")
 
         # Check for duplicate BEFORE uploading to S3 and saving to DB
         existing_id = check_duplicate_receipt(
@@ -92,14 +75,15 @@ async def extract_receipt(file: UploadFile = File(...)):
         clean_name = "".join(c for c in name if c.isalnum() or c in "._- ")
         s3_key = f"receipts/{timestamp}_{clean_name}{ext}"
         
-        # Upload to S3
-        s3_url = upload_file_to_s3(temp_path, s3_key)
+        # Upload to S3 directly from bytes
+        logger.info(f"Uploading to S3: {s3_key}")
+        s3_url = upload_file_to_s3_from_bytes(file_bytes, s3_key)
+        logger.info(f"S3 upload complete: {s3_url}")
         
         receipt_id = save_receipt(receipt_dict, s3_url=s3_url)
         matches = match_receipt(receipt_id)
 
         # Also return the presigned URL directly for immediate viewing
-        from backend.aws_clients import get_presigned_url
         presigned_url = get_presigned_url(s3_key)
 
         return {
@@ -110,17 +94,10 @@ async def extract_receipt(file: UploadFile = File(...)):
             "matches": matches,
         }
     except HTTPException:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         raise
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         logger.exception("Failed to process receipt")
-        raise HTTPException(status_code=400, detail=f"Could not process the receipt: {str(e)}")
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to process receipt: {str(e)}")
 
 @app.get("/receipts")
 async def list_receipts_route():

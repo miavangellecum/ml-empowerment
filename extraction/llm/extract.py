@@ -96,9 +96,66 @@ def parse_receipt(image_path: str) -> Receipt:
     )
     return _invoke_with_retry([message])
 
+def parse_receipt_from_bytes(file_bytes: bytes, filename: str) -> Receipt:
+    """Parse receipt images/PDFs from in-memory bytes (serverless-compatible).
+    
+    Supports both images (PNG, JPEG, GIF, WebP) and PDFs (first page rendered to PNG).
+    Used by the serverless upload endpoint to avoid disk I/O.
+    """
+    filename_lower = filename.lower()
+    
+    # Handle PDF by rendering the first page to PNG
+    if filename_lower.endswith(".pdf"):
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            raise Exception(
+                "PDF receipts require PyMuPDF to convert to an image. Install with: pip install pymupdf"
+            )
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        page = doc.load_page(0)
+        pix = page.get_pixmap(alpha=False)
+        img_bytes = pix.tobytes("png")
+        media_type = "image/png"
+        image_b64 = base64.b64encode(img_bytes).decode("utf-8")
+    else:
+        # Image file: determine media type from extension
+        if filename_lower.endswith(".png"):
+            media_type = "image/png"
+        elif filename_lower.endswith(".webp"):
+            media_type = "image/webp"
+        elif filename_lower.endswith(".gif"):
+            media_type = "image/gif"
+        else:
+            media_type = "image/jpeg"
+        
+        image_b64 = base64.b64encode(file_bytes).decode("utf-8")
+    
+    prompt_text = f"""You are analyzing a photo or PDF of a receipt/invoice for a small business owner's tax recordkeeping. Read the document directly and extract structured data.
+
+{_CATEGORY_INSTRUCTIONS}"""
+
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": prompt_text},
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": image_b64,
+                },
+            },
+        ]
+    )
+    return _invoke_with_retry([message])
+
 def _invoke_with_retry(prompt):
     try:
-        return structured_llm.invoke(prompt)
+        result = structured_llm.invoke(prompt)
+        if result is None:
+            raise ValueError("LLM returned None")
+        return result
     except NoCredentialsError:
         # Development fallback: when AWS credentials are not available locally,
         # return a minimal mock Receipt so local testing can continue without
@@ -108,17 +165,32 @@ def _invoke_with_retry(prompt):
             date=None,
             invoice_number=None,
             payment_method=None,
-            currency="EUR",
+            currency="USD",
             items=[],
             subtotal=None,
             vat_total=None,
             extraction_method="dev_mock",
             total=0.0,
         )
-    except ValidationError:
+    except ValidationError as e:
         retry_note = "\n\nIMPORTANT: Return each field as a single clean value only — do not include any XML/tool-call tags or extra text inside a field value."
         if isinstance(prompt, str):
             return structured_llm.invoke(prompt + retry_note)
         else:
             prompt[0].content.append({"type": "text", "text": retry_note})
             return structured_llm.invoke(prompt)
+    except Exception as e:
+        # Catch-all for unexpected errors: return a fallback receipt with error info
+        print(f"Error in _invoke_with_retry: {str(e)}")
+        return Receipt(
+            store_name=f"ERROR: {str(e)[:50]}",
+            date=None,
+            invoice_number=None,
+            payment_method=None,
+            currency="USD",
+            items=[],
+            subtotal=None,
+            vat_total=None,
+            extraction_method="error_fallback",
+            total=0.0,
+        )
