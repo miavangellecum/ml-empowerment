@@ -2,13 +2,16 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-import tempfile
+import logging
 
 from dotenv import load_dotenv
 load_dotenv()
 
+logger = logging.getLogger("uvicorn.error")
+
 from extraction.llm.extract import parse_receipt
 from db.db import save_receipt, get_receipts, get_receipt, init_db
+...
 from db.matcher import match_receipt
 from db.tax_rules import init_tax_rules
 from backend.aws_clients import upload_file_to_s3, get_presigned_url
@@ -85,6 +88,7 @@ async def extract_receipt(file: UploadFile = File(...)):
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+        logger.exception("Failed to process receipt")
         raise HTTPException(status_code=400, detail=f"Could not process the receipt: {str(e)}")
     finally:
         if os.path.exists(temp_path):
