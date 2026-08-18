@@ -22,8 +22,8 @@ Expense categorization follows IRS Schedule C, Part II line items directly (Form
 ┌─────────────────┐      ┌──────────────────────┐      ┌───────────────────────┐
 │   Frontend      │      │   FastAPI backend    │      │ CockroachDB           │
 │  (vanilla JS/   │◄────►│  /extract  /plaid/*  │◄────►│  receipts             │
-│   HTML/CSS,     │      │  /matches  /reports/*│      │  line_items           │
-│   Node/Express) │      │                      │      │  plaid_items          │
+│   HTML/CSS,     │      │  /matches  /reports/* │      │  line_items           │
+│   Node/Express) │      │  /agent/ask          │      │  plaid_items          │
 └─────────────────┘      └──────────┬───────────┘      │  plaid_accounts       │
                                     │                  │  plaid_transactions   │
                 ┌───────────────────┼──────────────────┤  receipt_transaction_ │
@@ -34,8 +34,9 @@ Expense categorization follows IRS Schedule C, Part II line items directly (Form
        │  bank sync       │  │  Claude Haiku    │
        └──────────────────┘  │  4.5 (EU Model)- │
                              │  extraction,     │
-                             │  matching, and   │
-                             │  the reporting   │
+                             │  matching, the   │
+                             │  reporting agent,│
+                             │  and the query   │
                              │  agent           │
                              └────────┬─────────┘
                                       │
@@ -45,7 +46,7 @@ Expense categorization follows IRS Schedule C, Part II line items directly (Form
                         │  IRS documentary evidence)  │
                         └─────────────────────────────┘
 
-      Receipt image/PDF → PaddleOCR (local text extraction) → AWS Bedrock (Claude Haiku 4.5 structured LLM extraction) → Pydantic schema validation → CockroachDB + S3
+      Receipt image/PDF → AWS Bedrock (Claude Haiku 4.5 vision, structured extraction directly from the image/PDF) → Pydantic schema validation → CockroachDB + S3
 ```
 
 ---
@@ -70,23 +71,26 @@ There is no separate vector store, no reindexing job, and no consistency gap —
 
 ### 2. CockroachDB as the single transactional source of truth
 
-Receipts, line items, Plaid items/accounts/transactions, and the match graph between them all live in one distributed relational schema (`db/db.py`, `backend/plaid_db.py`), connected through a pooled `psycopg2` connection (`db/cockroach.py`). This is what lets `db/expenses.py` join receipts and bank charges in a single `UNION ALL` query to build a unified ledger, compute an audit-readiness score, and flag anomalies — all as plain deterministic SQL/Python, specifically so the LLM layer (`db/reporting_agent.py`) is never asked to compute a dollar figure, only to classify and narrate. Every dollar in the final report traces back to a row Cockroach can produce on demand.
+Receipts, line items, Plaid items/accounts/transactions, and the match graph between them all live in one distributed relational schema (`db/db.py`, `backend/plaid_db.py`), connected through a pooled `psycopg2` connection (`db/cockroach.py`). This is what lets `db/expenses.py` join receipts and bank charges in a single `UNION ALL` query to build a unified ledger, compute an audit-readiness score, and flag anomalies — all as plain deterministic SQL/Python, specifically so the LLM layer (`db/reporting_agent.py`, `db/query_agent.py`) is never asked to compute a dollar figure, only to classify and narrate. Every dollar in the final report traces back to a row Cockroach can produce on demand.
 
-*(Optional/roadmap: the CockroachDB Cloud Managed MCP Server and* *`ccloud`* *CLI are natural next steps for giving the agent direct, read-only, audit-logged access to cluster state during development — see Roadmap below.)*
+During development, this project also used the **CockroachDB Cloud Managed MCP Server** to give the coding agent direct, read-only access to live cluster/schema state (inspecting tables, indexes, and query plans against the real cluster instead of guessing from migration files) — see Prerequisites below.
 
 ## AWS integration
-- **Amazon Bedrock** — the model layer for three distinct agent tasks:
-  - **Extraction** (`extraction/llm/extract.py`): Receives raw text from PaddleOCR and uses Claude Haiku 4.5 (`eu.anthropic.claude-haiku-4-5-20251001-v1:0`) to structure noisy data into typed Pydantic `Receipt` objects, classify line items into IRS Schedule C tax categories, normalize merchant names, and handle single-pass validation retries.
+- **Amazon Bedrock** — the model layer for four distinct agent tasks:
+  - **Extraction** (`extraction/llm/extract.py`): Sends the receipt image/PDF (first page, rendered to PNG via PyMuPDF when its a PDF) directly to Claude Haiku 4.5 (`eu.anthropic.claude-haiku-4-5-20251001-v1:0`) as a vision input, structuring it into typed Pydantic `Receipt` objects, classifying line items into IRS Schedule C tax categories, normalizing merchant names, and handling single-pass validation retries.
   - **Matching embeddings** (`db/embeddings.py`): Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`) queried directly in `eu-central-1`.
-  - **Reporting agent** (`db/reporting_agent.py`): given only pre-computed, already-correct numbers from `db/expenses.py`, classifies unreceipted bank charges into IRS categories (or flags `[NEEDS_REVIEW]`) and writes the three-section audit report — explicitly forbidden from recomputing any total or percentage itself.
+  - **Reporting agent** (`db/reporting_agent.py`): given only pre-computed, already-correct numbers from `db/expenses.py`, classifies unreceipted bank charges into IRS categories (or flags `[NEEDS_REVIEW]`) and writes the three-section audit report — explicitly forbidden from recomputing any total or percentage itself. Also answers report follow-up questions (`/reports/summary/ai/ask`) grounded in that same computed data.
+  - **Query agent** (`db/query_agent.py`, `backend/agent_routes.py`): a separate, constrained agent for ad-hoc questions ("how much did I spend on meals last quarter?") that answers only by calling fixed, pre-validated SQL tools (`db/query_tools.py`) — it never writes its own SQL, and every dollar figure in its answer is checked against the raw tool output before being returned.
 - **Amazon S3** (`backend/aws_clients.py`) — every original receipt image/PDF is uploaded to S3 on ingestion and the `s3_url` is stored alongside the structured data in CockroachDB (`receipts.s3_url`). This is the permanent documentary evidence the IRS requires — binary files never touch the database itself, only their path does.
 
 ## What the agent actually does, end to end
 
-1. **Ingest** — a receipt photo/PDF is uploaded (`/extract`). PaddleOCR extracts raw text (`extraction/ocr/ocr.py`, with PDF→PNG via `pypdfium2`); Bedrock/Claude Haiku 4.5 converts that raw text into a structured, IRS-categorized Pydantic `Receipt` schema; the original file goes to S3; the structured data + embedding goes to CockroachDB.2. **Sync** — Plaid Sandbox transactions stream in (`backend/plaid_routes.py`), each embedded and upserted into `plaid_transactions`.
+1. **Ingest** — a receipt photo/PDF is uploaded (`/extract`). The file goes straight to Bedrock/Claude Haiku 4.5 as a vision input (PDFs are rendered to a PNG of the first page via PyMuPDF first, since Bedrocks image payload only accepts image media types), which returns a structured, IRS-categorized Pydantic `Receipt` schema; the original file goes to S3; the structured data + embedding goes to CockroachDB.
+2. **Sync** — Plaid Sandbox transactions stream in (`backend/plaid_routes.py`), each embedded and upserted into `plaid_transactions`.
 3. **Match** — every new receipt or transaction immediately triggers the matching agent (`db/matcher.py`), which vector-searches the other table and records every candidate it considered.
 4. **Reconcile** — `/reports/summary` computes a unified ledger, category totals, deductible amounts (with the 50% meals limitation applied), an audit-readiness score, and flags (amount mismatches, missing receipts over $75, categories needing business-use verification) — all deterministically.
-5. **Report** — `/reports/summary/ai` hands those exact numbers to the reporting agent, which classifies the remaining unreceipted charges and writes the audit-ready three-section Markdown report, downloadable as CSV for an accountant.
+5. **Report** — `/reports/summary/ai` hands those exact numbers to the reporting agent, which classifies the remaining unreceipted charges and writes the audit-ready three-section Markdown report, downloadable as CSV or PDF, with an `/apply_classifications` endpoint to persist its category assignments back to the database and an `/ask` endpoint for follow-up questions.
+6. **Ask** — `/agent/ask` answers one-off questions about spend, audit readiness, and pending reviews through the constrained query agent, independent of the full report flow.
 
 ## Tech stack
 
@@ -95,11 +99,11 @@ Receipts, line items, Plaid items/accounts/transactions, and the match graph bet
 | Backend        | FastAPI (Python 3.11), uvicorn                                                                           |
 | Database       | CockroachDB (managed, vector-indexed)                                                                    |
 | Frontend       | Vanilla JS/HTML/CSS, served via Node.js/Express                                                          |
-| OCR            | PaddleOCR 3.x + PaddlePaddle, `pypdfium2` for PDF pages                                                  |
+| PDF handling   | PyMuPDF (`fitz`), first-page-to-PNG conversion for receipt PDFs                                          |
 | LLM            | AWS Bedrock — Claude Haiku 4.5 (`eu.` Cross-Region Profile), Amazon Titan Embed Text v2 (`eu-central-1`) |
 | Object storage | Amazon S3 (original receipt files)                                                                       |
 | Banking        | Plaid (Sandbox)                                                                                          |
-| Dev tools      | ngrok (Plaid webhooks)                                                                                   |
+| Dev tools      | ngrok (Plaid webhooks), CockroachDB Cloud Managed MCP Server (dev-time cluster access)                  |
 
 ## Repo layout
 
@@ -111,7 +115,8 @@ backend/
   plaid_routes.py            Plaid Link, sync, accounts, unlink
   plaid_db.py                CockroachDB-backed Plaid data access
   matches_routes.py          /matches — review the agent's match candidates
-  reports_routes.py          /reports/* — ledger, summary, AI report, CSV export
+  reports_routes.py          /reports/* — ledger, summary, AI report, CSV/PDF export
+  agent_routes.py            /agent/ask — the constrained query agent
 db/
   cockroach.py               CockroachDB connection pool
   db.py                      Schema (incl. VECTOR indexes) + receipt CRUD
@@ -119,9 +124,13 @@ db/
   matcher.py                 The matching agent (vector search + scoring)
   expenses.py                Deterministic ledger/report math
   reporting_agent.py         The audit-report LLM agent
+  query_agent.py             The ad-hoc question-answering agent
+  query_tools.py             Fixed, pre-validated SQL tools the query agent may call
+  tax_rules.py                Persistent tax-rule memory (deduction rates, etc.)
+  pdf_report.py               Deterministic PDF export
 extraction/
-  ocr/                       PaddleOCR + PDF handling
-  llm/                       Bedrock structured extraction
+  ocr/                       Base64/media-type helpers for the vision payload
+  llm/                       Bedrock structured vision extraction
   schema/                    Pydantic Receipt/LineItem schema
 frontend/                    index.html (dashboard), receipts.html,
                              reciept.html (detail), scan.html, reports.html
@@ -133,11 +142,12 @@ scripts/seed_mock_data.py    Seeds demo receipts + transactions + matches
 
 ### Prerequisites
 
-- Python 3.11 (PaddleOCR does not support 3.13+)
+- Python 3.11
 - Node.js (for the frontend static server)
 - A CockroachDB Cloud cluster
 - An AWS account with Bedrock model access enabled in `eu-central-1` (Claude Haiku 4.5, Titan Embed Text v2) and an S3 bucket
 - A Plaid developer account (Sandbox)
+- (Dev-time only) The CockroachDB Cloud Managed MCP Server, connected to your cluster, if you want an agent/IDE to inspect live schema and cluster state the way this project's development flow did — not required to run the app itself
 
 ### 1. Clone and set up the backend
 
@@ -217,7 +227,7 @@ Serves the dashboard at `http://localhost:3000`, talking to the API at `http://l
 
 | **Endpoint**                                                    | **What it does**                                                         |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `POST /extract`                                                 | Upload a receipt image/PDF → OCR → Bedrock extraction → S3 + CockroachDB |
+| `POST /extract`                                                 | Upload a receipt image/PDF → Bedrock vision extraction → S3 + CockroachDB |
 | `GET /receipts`, `GET /receipts/{id}`                           | List / fetch structured receipts                                         |
 | `POST /plaid/create_link_token`, `/plaid/exchange_public_token` | Plaid Link flow                                                          |
 | `POST /plaid/sync/{item_id}`                                    | Pull new transactions, auto-triggers matching                            |
@@ -225,7 +235,11 @@ Serves the dashboard at `http://localhost:3000`, talking to the API at `http://l
 | `GET /reports/ledger`                                           | Unified receipt + bank-charge ledger                                     |
 | `GET /reports/summary`                                          | Deterministic category totals, audit-readiness score, flags              |
 | `GET /reports/summary/ai`                                       | The reporting agent's narrative audit report                             |
+| `POST /reports/summary/ai/apply_classifications`                | Persists the AI report's assigned categories back to `plaid_transactions` |
+| `POST /reports/summary/ai/ask`                                  | Follow-up question about the generated AI report                        |
 | `GET /reports/summary/csv`                                      | Filing-ready CSV export                                                  |
+| `GET /reports/summary/pdf`                                      | Filing-ready PDF export (built from the deterministic numbers)          |
+| `POST /agent/ask`                                                | Ask the constrained financial query agent a one-off question             |
 
 ## Design principles behind the agentic memory
 
@@ -236,10 +250,9 @@ Serves the dashboard at `http://localhost:3000`, talking to the API at `http://l
 
 ## Roadmap
 
-- CockroachDB Cloud Managed MCP Server integration for direct, read-only, audit-logged agent access to cluster state
+- Deeper CockroachDB Cloud Managed MCP Server integration for direct, read-only, audit-logged *agent* (not just dev-time) access to cluster state
 - `ccloud` CLI integration for agent-driven cluster/backup management
 - Plaid-to-receipt matching UI polish (confirm/reject from `/matches` in the frontend)
-- PDF export of the audit report (currently Markdown/CSV)
 - Multi-user auth (currently a single-user demo `DEMO_USER_ID`)
 
 ## License
