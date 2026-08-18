@@ -13,6 +13,20 @@ Proof-status taxonomy:
   anomaly        receipt with a confirmed bank match, amounts differ >2%
   pending_proof  receipt with no confirmed bank match, OR a bank charge
                  with no receipt on file (see `missing_side`)
+
+Category taxonomy for transaction_only rows:
+  plaid_transactions.category starts out holding Plaid's own raw taxonomy
+  (e.g. "Shops, Office Supplies") from the sync in backend/plaid_db.py.
+  db/reporting_agent.py's audit report classifies these into our IRS
+  Schedule C categories, and reports_routes.py's
+  /summary/ai/apply_classifications persists that back onto the same
+  column via db/transactions_admin.py. So by the time this file reads it,
+  t.category can be EITHER Plaid's raw string OR a real IRS category,
+  depending on whether it's been classified yet — we can't trust it
+  blindly. We normalize against tax_rules below: anything not in our
+  known category set is treated as not-yet-classified ("uncategorized"),
+  and anything that IS a known category flows into by_category/totals
+  like any receipted line item.
 """
 from db.cockroach import get_conn
 from db.tax_rules import get_tax_rules, get_tax_rules_map
@@ -24,6 +38,8 @@ LARGE_TRANSACTION_THRESHOLD = 75.0  # general IRS documentation-threshold rule o
 
 def get_unified_ledger(start_date: str | None = None, end_date: str | None = None,
                         category: str | None = None) -> list[dict]:
+    known_categories = set(get_tax_rules_map().keys())
+
     with get_conn() as conn:
         cur = conn.cursor()
 
@@ -68,7 +84,7 @@ def get_unified_ledger(start_date: str | None = None, end_date: str | None = Non
 
             UNION ALL
 
-            SELECT t.id AS row_id, 'uncategorized' AS category, ABS(t.amount) AS amount,
+            SELECT t.id AS row_id, t.category AS category, ABS(t.amount) AS amount,
                    t.date, COALESCE(t.merchant_name, t.name) AS source, t.name AS description,
                    'transaction_only' AS origin, NULL AS payment_method, NULL AS s3_url,
                    NULL AS matched_amount_diff_pct,
@@ -93,6 +109,15 @@ def get_unified_ledger(start_date: str | None = None, end_date: str | None = Non
         r["amount"] = float(r["amount"]) if r["amount"] is not None else 0.0
 
         if r["origin"] == "transaction_only":
+            # t.category holds either Plaid's raw taxonomy (not yet
+            # classified) or one of our IRS categories (already
+            # classified via /summary/ai/apply_classifications). Only
+            # trust it as a real category if it's actually one of ours —
+            # otherwise normalize to "uncategorized" so downstream code
+            # (and the reporting agent's [NEEDS_REVIEW] logic) can still
+            # find it.
+            if r["category"] not in known_categories:
+                r["category"] = "uncategorized"
             r["proof_status"] = "pending_proof"
             r["missing_side"] = "receipt"
         elif r["matched_amount_diff_pct"] is not None:
@@ -103,6 +128,12 @@ def get_unified_ledger(start_date: str | None = None, end_date: str | None = Non
             r["proof_status"] = "pending_proof"
             r["missing_side"] = "transaction"
         r.pop("matched_amount_diff_pct", None)
+
+    # category filter also applies to already-classified transaction_only
+    # rows — the SQL-level filter above only covers line_items.category,
+    # since t.category isn't normalized until the Python pass above.
+    if category:
+        rows = [r for r in rows if r["origin"] == "receipt" or r["category"] == category]
 
     return rows
 
@@ -132,8 +163,16 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
         else:
             pending_receipt_rows.append(row)
 
-        if row["origin"] == "transaction_only":
-            continue  # not yet categorizable with confidence — left to the LLM layer as NEEDS_REVIEW
+        # Previously this always skipped every transaction_only row, so a
+        # bank charge already classified into a real IRS category via
+        # /summary/ai/apply_classifications never showed up in
+        # by_category/total_deductible/CSV/PDF — the classification was
+        # persisted but effectively invisible everywhere else. Now we
+        # only skip rows still genuinely unclassified (category ==
+        # "uncategorized" after the normalization in get_unified_ledger),
+        # leaving those to the LLM layer as before.
+        if row["origin"] == "transaction_only" and category not in tax_rules:
+            continue
 
         rule = tax_rules.get(category)
         deduction_rate = rule["deduction_rate"] if rule else 1.0  # unknown category: treat as fully deductible rather than silently dropping it
@@ -208,6 +247,7 @@ def get_expense_report(start_date: str | None = None, end_date: str | None = Non
             {"row_id": r["row_id"], "date": str(r["date"]), "source": r["source"],
              "description": r["description"], "amount": round(r["amount"], 2)}
             for r in unreceipted_rows
+            if r["category"] == "uncategorized"
         ],
         # NEW: the actual itemized rows, one per receipt line item or
         # unreceipted charge, each with its real date. This is what
