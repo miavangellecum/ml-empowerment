@@ -1,7 +1,7 @@
 // Talks to the FastAPI backend (app.py). Falls back to mock data if the
 // API isn't reachable yet, so the frontend is always demoable on its own.
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = window.location.origin;
 
 // Kept in sync with extraction/llm/extract.py's IRS_CATEGORIES list.
 // No icons by design — color + label carry the category instead.

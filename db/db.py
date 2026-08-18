@@ -1,8 +1,3 @@
-"""
-CockroachDB-backed replacement for the old db/db.py (sqlite3).
-Same public functions (save_receipt, get_receipts) plus get_receipt, so
-app.py's call sites barely change — just the import.
-"""
 from db.cockroach import get_conn
 from db.embeddings import EMBEDDING_DIM, embed_text, to_vector_literal
 from backend.aws_clients import get_presigned_url  # add this import
