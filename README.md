@@ -73,7 +73,17 @@ There is no separate vector store, no reindexing job, and no consistency gap —
 
 Receipts, line items, Plaid items/accounts/transactions, and the match graph between them all live in one distributed relational schema (`db/db.py`, `backend/plaid_db.py`), connected through a pooled `psycopg2` connection (`db/cockroach.py`). This is what lets `db/expenses.py` join receipts and bank charges in a single `UNION ALL` query to build a unified ledger, compute an audit-readiness score, and flag anomalies — all as plain deterministic SQL/Python, specifically so the LLM layer (`db/reporting_agent.py`, `db/query_agent.py`) is never asked to compute a dollar figure, only to classify and narrate. Every dollar in the final report traces back to a row Cockroach can produce on demand.
 
-During development, this project also used the **CockroachDB Cloud Managed MCP Server** to give the coding agent direct, read-only access to live cluster/schema state (inspecting tables, indexes, and query plans against the real cluster instead of guessing from migration files) — see Prerequisites below.
+3. MCP Server Pattern (Development + Architecture)
+
+During development: We used the CockroachDB Cloud Managed MCP Server with Github Copilot for rapid iteration and safe database exploration
+
+In production: We implemented the MCP design pattern - a controlled, read-only interface between the agent and CockroachDB
+
+The reason why we did this was to avoid an scenario where The agent writes intoSQL directly, if such cases aren't tested extensively, there can be many vulnerabilities created, like a risk of unsafe deletion fo records, or injection of unsafe code. All database access goes through validated, auditable functions (like get_expense_report(), get_unified_ledger(), etc.) - exactly what MCP provides
+
+Given a longer period of devlopment with a higher focus on agent training and handling, an MCP server can seamlessly be integrated to out app during deployment. 
+
+For the purpose of this hackathon, we used an MCP server extensively for coding and debugging.
 
 ## AWS integration
 - **Amazon Bedrock** — the model layer for four distinct agent tasks:
@@ -129,7 +139,6 @@ db/
   tax_rules.py                Persistent tax-rule memory (deduction rates, etc.)
   pdf_report.py               Deterministic PDF export
 extraction/
-  ocr/                       Base64/media-type helpers for the vision payload
   llm/                       Bedrock structured vision extraction
   schema/                    Pydantic Receipt/LineItem schema
 frontend/                    index.html (dashboard), receipts.html,
@@ -208,7 +217,7 @@ Bash
 python scripts/seed_mock_data.py
 ```
 
-Idempotently seeds 5 mock receipts + 6 mock transactions and runs the matcher, so `/reports/summary` and `/matches` are populated without waiting on live OCR/Plaid timing.
+Idempotently seeds 5 mock receipts + 6 mock transactions and runs the matcher, so `/reports/summary` and `/matches` are populated without waiting on live timing.
 
 ### 5. Run the frontend
 
@@ -257,4 +266,4 @@ Serves the dashboard at `http://localhost:3000`, talking to the API at `http://l
 
 ## License
 
-MIT — see `LICENSE`.
+Apache 2.0 — see `LICENSE`.
