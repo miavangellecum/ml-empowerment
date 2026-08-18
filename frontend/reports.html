@@ -96,7 +96,7 @@
 
     <div class="panel">
       <h3>Audit flags</h3>
-      <div class="sub">Amount mismatches, missing documentation, and business-use items to verify.</div>
+      <div class="sub">Mismatches, missing documentation, and business-use items to verify.</div>
       <div id="flagsList"><div style="opacity:0.5; font-size:13px; padding:10px 0;">Loading…</div></div>
     </div>
 
@@ -255,11 +255,10 @@ function renderMarkdownLite(md) {
     } catch (e) { console.warn('Failed to load matches overview', e); }
 
     const totalBusinessSpend = report.total_expense_amount.toFixed(2);
-    const unreceiptedCount = report.counts.unreceipted_transactions;
     const summaryLayer = document.createElement('div');
     summaryLayer.className = 'score-copy';
     const spendText = `of $${totalBusinessSpend} total business spend.`;
-    const receiptText = `${unreceiptedCount} bank charge(s) still need a receipt.`;
+    const receiptText = `Some bank charges still need a receipt.`;
     const linkHtml = pendingMatches > 0
       ? `<a href="matches.html?show=transactions&filter=unverified" style="color:var(--sage); display:inline-block; margin-top:6px;">${pendingMatches} match(es) awaiting your review — confirm to raise this score →</a>`
       : '';
